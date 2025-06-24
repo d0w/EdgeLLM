@@ -1,0 +1,35 @@
+server:
+  port: 8080
+  host: localhost
+  timeout: 30s
+
+logging:
+  level: info
+  format: json
+
+database:
+  # Uncomment and configure if using a database
+  # host: localhost
+  # port: 5432
+  # name: edgellm
+  # user: edgellm
+  # password: edgellm
+  # ssl_mode: disable
+
+redis:
+  # Uncomment and configure if using Redis
+  # host: localhost
+  # port: 6379
+  # password: ""
+  # db: 0
+
+security:
+  jwt_secret: your-secret-key
+  cors_origins:
+    - http://localhost:3000
+    - http://localhost:8080
+
+features:
+  enable_metrics: true
+  enable_tracing: false
+  enable_profiling: false 

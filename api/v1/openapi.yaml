@@ -1,0 +1,97 @@
+openapi: 3.0.3
+info:
+  title: EdgeLLM API
+  description: API for EdgeLLM service
+  version: 1.0.0
+  contact:
+    name: EdgeLLM Team
+    email: 
+  license:
+    name: 
+    url: 
+
+servers:
+  - url: http://localhost:8080
+    description: Development server
+  - url:
+    description: Production server
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      description: Returns the health status of the service
+      operationId: getHealth
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /api/v1/hello:
+    get:
+      summary: Hello endpoint
+      description: Returns a hello message
+      operationId: getHello
+      tags:
+        - API
+      responses:
+        '200':
+          description: Hello message
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HelloResponse'
+
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: healthy
+        service:
+          type: string
+          example: edgellm
+        version:
+          type: string
+          example: 1.0.0
+      required:
+        - status
+        - service
+        - version
+
+    HelloResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Hello from EdgeLLM!
+        version:
+          type: string
+          example: 1.0.0
+      required:
+        - message
+        - version
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: Bad Request
+        message:
+          type: string
+          example: Invalid request parameters
+        code:
+          type: integer
+          example: 400
+      required:
+        - error
+        - message
+        - code 
