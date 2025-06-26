@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package backend;
+// option go_package = "github.com/d0w/EdgeLLM/backend/go/pb";
+option go_package = "backend/go/proto";
+
+service Backend {
+  rpc LoadModel(ModelOptions) returns (LoadModelResponse);
+  rpc Health(HealthRequest) returns (HealthResponse);
+  rpc GenerateText(GenerateTextRequest) returns (GenerateTextResponse);
+  rpc GenerateTextStream(GenerateTextRequest) returns (stream GenerateTextResponse);
+
+}
+
+
+
+
+message ModelOptions {
+  string Model = 1;
+  int32 ContextSize = 2;
+  // ...
+}
+
+message LoadModelResponse {
+  string message = 1;
+  bool success = 2;
+  // ...
+}
+
+message HealthRequest {
+  // ...
+}
+
+message HealthResponse {
+  bool healthy = 1;
+  string message = 2;
+  // ..
+}
+
+message GenerateTextRequest {
+  string prompt = 1;
+  // .. a lot more 
+}
+
+message GenerateTextResponse {
+  string text = 1;
+  // .. a lot more
+}
+
+message GenerateTextStreamResponse {
+  string text = 1;
+  // .. a lot more
+}
+

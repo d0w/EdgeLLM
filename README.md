@@ -12,35 +12,54 @@ A Go-based application with Docker support.
 
 ## Quick Start
 
+TODO: Startup script to automate this
+
 ### Prerequisites
 
 - Go 1.21 or later
 - Docker and Docker Compose
 - Make (optional, for using Makefile commands)
+- Python 3.10 or later
+[protoc](https://protobuf.dev/installation/)
+[go extension for protoc](https://grpc.io/docs/languages/go/quickstart/)
 
 ### Local Development
 
 1. **Clone and setup dependencies:**
+
    ```bash
    go mod download
    ```
 
-2. **Run locally:**
+2. **Setup a local Python environment:**
+
    ```bash
-   go run .
-   # or
-   make run
+   python -m venv venv
+   source venv/bin/activate  # On Windows use `venv\Scripts\activate`
+   pip install -r requirements.txt
    ```
 
-3. **Test the application:**
    ```bash
-   curl http://localhost:8080/health
-   curl http://localhost:8080/api/v1/hello
+   python -m pip install -r backend/python/requirements.txt
    ```
 
-### Docker Development
+3. **Build proto**
+    1. Install protoc and go's extension for protoc
+
+    1. Build protobuf
+
+      ```bash
+      # For python spec
+      python -m grpc_tools.protoc -Ibackend --python_out=backend/python/proto --grpc_python_out=backend/python/proto --pyi_out=backend/python/proto backend/backend.proto
+      
+      # For go spec
+      protoc --go_out=. --go-grpc_out=. backend/backend.proto
+      ```
+
+### Docker Development (does not work)
 
 1. **Build and run with Docker Compose:**
+
    ```bash
    docker-compose up --build
    # or
@@ -48,6 +67,7 @@ A Go-based application with Docker support.
    ```
 
 2. **Stop the containers:**
+
    ```bash
    docker-compose down
    # or
@@ -118,16 +138,19 @@ make clean         # Clean build artifacts
 ## Deployment
 
 1. **Build the Docker image:**
+
    ```bash
    make docker-build
    ```
 
 2. **Push to registry (configure DOCKER_REGISTRY in Makefile):**
+
    ```bash
    make docker-push
    ```
 
 3. **Deploy using Docker Compose:**
+
    ```bash
    docker-compose up -d
    ```
@@ -138,4 +161,5 @@ make clean         # Clean build artifacts
 2. Create your feature branch
 3. Commit your changes
 4. Push to the branch
-5. Create a Pull Request 
+5. Create a Pull Request
+

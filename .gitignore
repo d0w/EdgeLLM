@@ -37,3 +37,9 @@ Thumbs.db
 # Build output
 dist/
 build/ 
+
+# Protobuf generated files
+proto/
+*.pb.go
+*pb2.py
+*pb2_grpc.py
