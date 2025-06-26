@@ -1,14 +1,12 @@
 # EdgeLLM
 
-A Go-based application with Docker support.
+Run decentralized LLMs. Distribute your inference and training requests across a vast peer-to-peer network without a need for a centralized server. EdgeLLM gives users the ability to perform inference on models much larger than they could with their own machine, utilizing a network of volunteers' machines to perform inference on their behalf.
 
 ## Features
 
-- RESTful API built with Gin framework
-- Docker containerization with multi-stage builds
-- Docker Compose for easy development
-- Health check endpoints
-- Makefile for common tasks
+- Peer-to-peer decentralized inference
+- vLLM support
+- more to come...
 
 ## Quick Start
 
