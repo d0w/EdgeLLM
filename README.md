@@ -54,7 +54,7 @@ TODO: Startup script to automate this
       protoc --go_out=. --go-grpc_out=. backend/backend.proto
       ```
 
-### Docker Development (does not work)
+### Docker Development (WIP)
 
 1. **Build and run with Docker Compose:**
 
@@ -72,12 +72,12 @@ TODO: Startup script to automate this
    make docker-stop
    ```
 
-## API Endpoints
+## API Endpoints (WIP)
 
 - `GET /health` - Health check endpoint
 - `GET /api/v1/hello` - Example API endpoint
 
-## Available Make Commands
+## Available Make Commands (WIP)
 
 ```bash
 make help          # Show available commands
@@ -96,44 +96,7 @@ make clean         # Clean build artifacts
 - `PORT` - Server port (default: 8080)
 - `GIN_MODE` - Gin mode (debug/release, default: debug)
 
-## Project Structure
-
-```
-.
-├── cmd/
-│   └── server/          # Main application entry point
-│       └── main.go
-├── internal/            # Private application code
-│   ├── config/          # Configuration management
-│   ├── handler/         # HTTP handlers
-│   ├── middleware/      # HTTP middleware
-│   ├── model/           # Data models
-│   └── service/         # Business logic
-├── pkg/                 # Public library code
-│   ├── logger/          # Logging utilities
-│   └── utils/           # Common utilities
-├── api/                 # API definitions
-│   └── v1/
-│       └── openapi.yaml # OpenAPI specification
-├── configs/             # Configuration files
-│   └── app.yaml
-├── scripts/             # Build and deployment scripts
-│   ├── build.sh
-│   └── test.sh
-├── deployments/         # Deployment configurations
-│   ├── docker-compose.prod.yml
-│   └── nginx.conf
-├── test/                # Integration tests
-├── web/                 # Web UI assets
-│   └── static/
-├── go.mod              # Go module file
-├── Dockerfile          # Docker configuration
-├── docker-compose.yml  # Docker Compose configuration
-├── Makefile           # Build and deployment commands
-└── README.md          # This file
-```
-
-## Deployment
+## Deployment (WIP)
 
 1. **Build the Docker image:**
 
