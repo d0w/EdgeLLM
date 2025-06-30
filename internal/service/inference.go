@@ -6,10 +6,12 @@ import (
 
 	pb "github.com/d0w/EdgeLLM/backend/go/proto"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 type InferenceService struct {
 	pythonClient pb.BackendClient
+	connection   *grpc.ClientConn
 }
 
 func NewInferenceService() (*InferenceService, error) {
@@ -17,7 +19,7 @@ func NewInferenceService() (*InferenceService, error) {
 	if address == "" {
 		address = "localhost:50051"
 	}
-	conn, err := grpc.Dial(address, grpc.WithInsecure())
+	conn, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, err
 	}
@@ -25,7 +27,12 @@ func NewInferenceService() (*InferenceService, error) {
 	client := pb.NewBackendClient(conn)
 	return &InferenceService{
 		pythonClient: client,
+		connection:   conn,
 	}, nil
+}
+
+func (s *InferenceService) Close() error {
+	return s.connection.Close()
 }
 
 func (s *InferenceService) GenerateText(ctx context.Context, prompt string) (*pb.GenerateTextResponse, error) {
@@ -35,4 +42,13 @@ func (s *InferenceService) GenerateText(ctx context.Context, prompt string) (*pb
 	}
 
 	return s.pythonClient.GenerateText(ctx, req)
+}
+
+func (s *InferenceService) LoadModel(ctx context.Context, modelName string, contextSize int32) (*pb.LoadModelResponse, error) {
+	req := &pb.ModelOptions{
+		Model:       modelName,
+		ContextSize: contextSize,
+	}
+
+	return s.pythonClient.LoadModel(ctx, req)
 }

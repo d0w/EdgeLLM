@@ -9,8 +9,6 @@ import grpc
 import proto.backend_pb2_grpc as backend_pb2_grpc
 import proto.backend_pb2 as backend_pb2
 
-from vllm import LLM, SamplingParams
-
 MAX_WORKERS = int(os.environ.get("PYTHON_GRPC_MAX_WORKERS", "1"))
 
 grpc_logger = get_logger("grpc_server")
@@ -19,21 +17,23 @@ grpc_logger = get_logger("grpc_server")
 class BackendServicer(backend_pb2_grpc.BackendServicer):
     def LoadModel(self, request, context):
         grpc_logger.info("Loading model...")
+        return backend_pb2.GenerateTextResponse(text="Model loaded successfully")
         # ...
 
     def Health(self, request, context):
         grpc_logger.info("Checking health...")
+        return backend_pb2.HealthResponse(healthy=True, message="Service is healthy")
         # ...
 
     def GenerateText(self, request, context):
         # not completed
-        sampling_params = SamplingParams(
-            temperature=request.temperature,
-            top_p=request.top_p,
-            max_tokens=request.max_tokens,
-        )
-        response = self.model.generate(request.prompt, sampling_params)
-        return backend_pb2.GenerateTextResponse(text=response.text)
+        # sampling_params = SamplingParams(
+        #     temperature=request.temperature,
+        #     top_p=request.top_p,
+        #     max_tokens=request.max_tokens,
+        # )
+        # response = self.model.generate(request.prompt, sampling_params)
+        return backend_pb2.GenerateTextResponse(text="Random sample text")
 
     # ... more functions
 
