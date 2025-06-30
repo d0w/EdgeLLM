@@ -15,11 +15,10 @@ TODO: Startup script to automate this
 ### Prerequisites
 
 - Go 1.21 or later
-- Docker and Docker Compose
+- Docker and Docker Compose (optional for now)
 - Make (optional, for using Makefile commands)
 - Python 3.10 or later
-[protoc](https://protobuf.dev/installation/)
-[go extension for protoc](https://grpc.io/docs/languages/go/quickstart/)
+- [protoc](https://protobuf.dev/installation/) and the [go extension for protoc](https://grpc.io/docs/languages/go/quickstart/)
 
 ### Local Development
 
