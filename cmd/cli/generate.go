@@ -8,7 +8,10 @@ import (
 
 	"github.com/d0w/EdgeLLM/internal/service"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
+
+var vllmQuiet bool
 
 var generateCmd = &cobra.Command{
 	Use:   "generate <prompt>",
@@ -18,6 +21,9 @@ var generateCmd = &cobra.Command{
 }
 
 func init() {
+	generateCmd.Flags().BoolVar(&vllmQuiet, "quiet", false, "Suppress output from the vLLM server")
+	viper.BindPFlag("quiet", generateCmd.Flags().Lookup("quiet"))
+
 	rootCmd.AddCommand(generateCmd)
 }
 

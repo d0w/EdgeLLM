@@ -36,28 +36,36 @@ TODO: Startup script to automate this
 
 2. **Setup a local Python environment:**
 
-   ```bash
+ ```bash
    python -m venv venv
    source venv/bin/activate  # On Windows use `venv\Scripts\activate`
    pip install -r requirements.txt
    ```
 
    ```bash
-   python -m pip install -r backend/python/requirements.txt
+   python3 -m pip install -r backend/python/requirements.txt
    ```
 
 3. **Build proto**
-    1. Install protoc and go's extension for protoc
+    1. Install protoc and go's [extension](https://grpc.io/docs/languages/go/quickstart/) for protoc
 
     1. Build protobuf
 
       ```bash
       # For python spec
-      python -m grpc_tools.protoc -Ibackend --python_out=backend/python/proto --grpc_python_out=backend/python/proto --pyi_out=backend/python/proto backend/backend.proto
+      python3 -m grpc_tools.protoc -Ibackend --python_out=backend/python/proto --grpc_python_out=backend/python/proto --pyi_out=backend/python/proto backend/backend.proto
       
       # For go spec
       protoc --go_out=. --go-grpc_out=. backend/backend.proto
       ```
+
+4. Run main to view commands
+
+*Make sure you've activated your Python virtual environment in the same terminal session as you're running the go application.*
+
+   ```bash
+   go run main.go
+   ```
 
 ### Docker Development (WIP)
 
@@ -128,4 +136,3 @@ make clean         # Clean build artifacts
 3. Commit your changes
 4. Push to the branch
 5. Create a Pull Request
-

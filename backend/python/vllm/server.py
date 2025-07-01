@@ -2,12 +2,13 @@ import os
 import asyncio
 from concurrent import futures
 import signal
+import argparse
 
 from utils.logger import get_logger
 
 import grpc
-import proto.backend_pb2_grpc as backend_pb2_grpc
-import proto.backend_pb2 as backend_pb2
+import backend_pb2_grpc
+import backend_pb2
 
 MAX_WORKERS = int(os.environ.get("PYTHON_GRPC_MAX_WORKERS", "1"))
 
@@ -40,7 +41,12 @@ class BackendServicer(backend_pb2_grpc.BackendServicer):
 
 async def serve(address):
     server = grpc.aio.server(
-        futures.ThreadPoolExecutor(max_workers=MAX_WORKERS), options=[]
+        futures.ThreadPoolExecutor(max_workers=MAX_WORKERS),
+        options=[
+            ("grpc.max_message_length", 50 * 1024 * 1024),  # 50MB
+            ("grpc.max_send_message_length", 50 * 1024 * 1024),  # 50MB
+            ("grpc.max_receive_message_length", 50 * 1024 * 1024),  # 50MB
+        ],
     )
 
     backend_pb2_grpc.add_BackendServicer_to_server(BackendServicer(), server)
@@ -48,8 +54,20 @@ async def serve(address):
 
     loop = asyncio.get_event_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, server.stop, 0)
+        loop.add_signal_handler(sig, lambda: asyncio.ensure_future(server.stop(5)))
 
     await server.start()
 
     grpc_logger.info(f"gRPC server started on {address}")
+
+    await server.wait_for_termination()
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run the gRPC server.")
+    parser.add_argument(
+        "--addr", default="localhost:50051", help="The address to bind the server to."
+    )
+    args = parser.parse_args()
+
+    asyncio.run(serve(args.addr))

@@ -29,9 +29,11 @@ var rootCmd = &cobra.Command{
 	Long: `EdgeLLM CLI provides commands to interact with the distributed 
 LLM inference backend, including text generation, model management, 
 and health monitoring.`,
-	PersistentPreRun: startBackend,
+	PersistentPreRun:  startBackend,
+	PersistentPostRun: stopBackend,
 }
 
+// TODO: Deprecate this
 func Execute() error {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
@@ -77,6 +79,7 @@ func initConfig() {
 	}
 }
 
+// TODO: Move this into separate cmd and have user start and stop server manually
 func startBackend(cmd *cobra.Command, args []string) {
 	// can set alias later, for now just VllmServer
 	vllmServer = runner.NewVllmServer("")
@@ -87,5 +90,11 @@ func startBackend(cmd *cobra.Command, args []string) {
 
 	if err := vllmServer.Start(startArgs); err != nil {
 		log.Fatalf("Failed to start VLLM server: %v", err)
+	}
+}
+
+func stopBackend(cmd *cobra.Command, args []string) {
+	if err := vllmServer.Stop(); err != nil {
+		log.Fatalf("Failed to stop VLLM server: %v", err)
 	}
 }
