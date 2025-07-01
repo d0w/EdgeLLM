@@ -2,6 +2,12 @@
 
 Run decentralized LLMs. Distribute your inference and training requests across a vast peer-to-peer network without a need for a centralized server. EdgeLLM gives users the ability to perform inference on models much larger than they could with their own machine, utilizing a network of volunteers' machines to perform inference on their behalf.
 
+## Goals
+
+Make the backend (model serving) interchangeable and make this project sort of a standalone that can use any inference server as long as they implement the grpc interface. We just need to focus on the inference routing, discovery, etc. and make this something you can just layer on top of an inference server to start supporting decentralized p2p inference.
+
+more details to come...
+
 ## Features
 
 - Peer-to-peer decentralized inference
