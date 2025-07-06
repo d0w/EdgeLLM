@@ -129,6 +129,13 @@ make clean         # Clean build artifacts
    docker-compose up -d
    ```
 
+## References
+
+This project takes inspiration and code snippets from several sources:
+
+- [LocalAI](https://github.com/mudler/LocalAI)
+  - Main source of inspiration. This project aims to take the distributed inference capabilities of LocalAI and extend them to truly decentralized networks that work on more inference servers than just llama.cpp
+
 ## Contributing
 
 1. Fork the repository

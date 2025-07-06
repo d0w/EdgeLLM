@@ -44,3 +44,5 @@ build/
 *pb2_grpc.py
 
 .venv/
+
+__pycache__/
