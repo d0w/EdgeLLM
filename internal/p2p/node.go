@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math/rand"
 	"os"
 	"strings"
 	"time"
@@ -107,6 +108,17 @@ func newNodeOptions(token string) ([]node.Option, error) {
 	nodeOpts = append(nodeOpts, services.Alive(30*time.Second, 900*time.Second, 15*time.Minute)...)
 
 	return nodeOpts, nil
+}
+
+// node.Host.ID()
+func GetNodeID(n *node.Node) string {
+	if n == nil || n.Host == nil {
+		return ""
+	}
+	// Generate a random number between 0 and 99
+	randNumber := rand.Intn(1000)
+	// return random number
+	return string(randNumber)
 }
 
 func stringsToMultiAddr(peers []string) []multiaddr.Multiaddr {
