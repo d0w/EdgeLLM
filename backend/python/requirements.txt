@@ -1,2 +1,10 @@
 grpcio
 grpcio-tools
+vllm
+torch
+transformers
+accelerate
+numpy
+redis
+psutil
+pickle5

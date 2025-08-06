@@ -15,16 +15,35 @@ import (
 	"github.com/spf13/viper"
 )
 
-type VllmServer struct {
-	cmd    *exec.Cmd
-	logger *log.Logger
+type VllmServerType int
+
+const (
+	VllmHead VllmServerType = iota
+	VllmWorker
+)
+
+var serverType = map[VllmServerType]string{
+	VllmHead:   "--head",
+	VllmWorker: "--worker",
 }
 
-func NewVllmServer(alias string) *VllmServer {
+type VllmServer struct {
+	cmd           *exec.Cmd
+	serverAddress string
+	serverType    VllmServerType
+	hfCachePath   string
+	logger        *log.Logger
+}
+
+func NewVllmServer(serverType VllmServerType, serverAddress string, hfCachePath string) *VllmServer {
 	cyan := "\033[36m"
 	reset := "\033[0m"
-	if alias == "" {
-		alias = cyan + "[VllmProxy]: " + reset
+
+	var alias string
+	if serverType == VllmHead {
+		alias = cyan + "[VllmHead]: " + reset
+	} else {
+		alias = cyan + "[VllmWorker]: " + reset
 	}
 
 	var logger *log.Logger
@@ -34,24 +53,20 @@ func NewVllmServer(alias string) *VllmServer {
 		logger = log.New(os.Stdout, alias, log.LstdFlags)
 	}
 	return &VllmServer{
-		logger: logger,
+		logger:        logger,
+		serverAddress: serverAddress,
+		serverType:    serverType,
+		hfCachePath:   hfCachePath,
 	}
 }
 
 func (s *VllmServer) Start(startArgs []string) error {
-	// flag variables
-	serverAddr := viper.GetString("vllm-server")
-	maxWorkers := viper.GetInt("vllm-max-workers")
-	if maxWorkers <= 0 {
-		maxWorkers = 4 // Default to 4 workers if not set
-	}
-
 	// setting server's root path
 	var serverDirectory string
 	if path, ok := os.LookupEnv("VLLM_SERVER_PATH"); ok {
 		serverDirectory = filepath.Join(path)
 	} else {
-		serverDirectory = filepath.Join("backend", "python", "vllm")
+		serverDirectory = filepath.Join("scripts")
 	}
 
 	// check if server script exists
@@ -61,7 +76,19 @@ func (s *VllmServer) Start(startArgs []string) error {
 	}
 
 	// bootstrap command
-	s.cmd = exec.Command("python3", append(startArgs, "vllm/server.py")...)
+	s.cmd = exec.Command(
+		"vllm_cluster.sh",
+		append([]string{
+			"vllm/vllm-openai",
+			s.serverAddress,
+			serverType[s.serverType],
+			s.hfCachePath,
+			"-e",
+			fmt.Sprintf("VLLM_HOST_IP=%s", s.serverAddress),
+		},
+			startArgs...,
+		)...,
+	)
 	s.cmd.Stdout = s.logger.Writer()
 	s.cmd.Stderr = s.logger.Writer()
 	s.cmd.Dir = filepath.Dir(serverDirectory)

@@ -16,10 +16,43 @@ grpc_logger = get_logger("grpc_server")
 
 
 class BackendServicer(backend_pb2_grpc.BackendServicer):
-    def LoadModel(self, request, context):
-        grpc_logger.info("Loading model...")
+    def __init__(self):
+        self.node_id = node_id
+        self.llm: Optional[LLM] = None
+        self.shard_info: Optional[Dict] = None
+        self.shard_groups: Dict[str, Dict] = {}
+        self.peer_clients: Dict[str, grpc.Channel] = {}
+        self.active_requests: Dict[str, bool] = {}
+        self._lock = threading.Lock()
+
+        grpc_logger.info(f"BackendServicer initialized with node_id: {self.node_id}")
+
+    def LoadModelShard(self, request, context):
+        try:
+            grpc_logger.info(f"Loading model shard: {request.model}")
+            assignment = request.assignment
+            shard_rank = assignment.shard_rank
+            world_size = assignment.world_size
+
+            self.shard_info = {
+                "model": request.model,
+                "shard_group_id": request.shard_group_id,
+                "shard_rank": shard_rank,
+                "world_size": world_size,
+                "layer_range": list(assignment.layer_range),
+                "shard_type": assignment.shard_type,
+                "metadata": dict(assignment.shard_metadata)
+            }        
+
+            model_options = request.model_options
+            llm_kwargs = {
+                "model": request.model,
+                "dtype": model_options.dtype or "auto",
+                "enforce_eager": model_options.enforce_eager or False,
+            }
+        except Exception as e:
+
         return backend_pb2.GenerateTextResponse(text="Model loaded successfully")
-        # ...
 
     def Health(self, request, context):
         grpc_logger.info("Checking health...")

@@ -1,54 +1,450 @@
 syntax = "proto3";
 
 package backend;
-// option go_package = "github.com/d0w/EdgeLLM/backend/go/pb";
 option go_package = "backend/go/proto";
 
+// Main Backend service for inference
 service Backend {
   rpc LoadModel(ModelOptions) returns (LoadModelResponse);
   rpc Health(HealthRequest) returns (HealthResponse);
   rpc GenerateText(GenerateTextRequest) returns (GenerateTextResponse);
-  rpc GenerateTextStream(GenerateTextRequest) returns (stream GenerateTextResponse);
-
+  rpc GenerateTextStream(GenerateTextRequest) returns (stream GenerateTextStreamResponse);
+  
+  // Sharded model operations
+  rpc LoadModelShard(ShardLoadRequest) returns (ShardLoadResponse);
+  rpc ExecuteShardForward(ShardForwardRequest) returns (ShardForwardResponse);
+  rpc ExecuteShardGeneration(ShardGenerationRequest) returns (ShardGenerationResponse);
 }
 
+// Distributed model sharding service
+service ModelSharding {
+  rpc CreateShardedModel(ShardingRequest) returns (ShardingResponse);
+  rpc ExecuteShardedInference(ShardedInferenceRequest) returns (ShardedInferenceResponse);
+  rpc ExecuteShardedInferenceStream(ShardedInferenceRequest) returns (stream ShardedInferenceStreamResponse);
+  rpc GetShardedModelStatus(ShardStatusRequest) returns (ShardStatusResponse);
+  rpc DestroyShardedModel(DestroyShardRequest) returns (DestroyShardResponse);
+}
 
+// Node coordination service  
+service NodeCoordinator {
+  rpc RegisterNode(NodeRegistration) returns (NodeRegistrationResponse);
+  rpc GetAvailableNodes(NodesRequest) returns (NodesResponse);
+  rpc RouteInference(InferenceRoutingRequest) returns (InferenceRoutingResponse);
+  rpc ReportCapacity(CapacityReport) returns (CapacityResponse);
+  rpc RegisterShardGroup(ShardGroupRegistration) returns (ShardGroupResponse);
+  rpc GetShardGroups(ShardGroupRequest) returns (ShardGroupListResponse);
+}
 
+// Load balancer service
+service LoadBalancer {
+  rpc DistributeInference(DistributedInferenceRequest) returns (DistributedInferenceResponse);
+  rpc GetClusterStatus(ClusterStatusRequest) returns (ClusterStatusResponse);
+  rpc DistributeShardedInference(ShardedDistributionRequest) returns (ShardedDistributionResponse);
+}
 
+// Model management
 message ModelOptions {
-  string Model = 1;
-  int32 ContextSize = 2;
-  // ...
+  string model = 1;
+  int32 context_size = 2;
+  string model_path = 3;
+  int32 tensor_parallel_size = 4;
+  int32 pipeline_parallel_size = 5;
+  int32 max_model_len = 6;
+  string dtype = 7;
+  bool enforce_eager = 8;
+  int32 gpu_memory_utilization = 9;
+  
+  // Sharding options
+  bool enable_sharding = 10;
+  string sharding_strategy = 11; // "pipeline", "tensor", "expert", "hybrid"
+  int32 total_shards = 12;
 }
 
 message LoadModelResponse {
   string message = 1;
   bool success = 2;
-  // ...
+  string model_id = 3;
+  int64 model_size_bytes = 4;
+  repeated string supported_features = 5;
 }
 
+// Sharding messages
+message ShardingRequest {
+  string model = 1;
+  string sharding_strategy = 2;  // "pipeline", "tensor", "expert"
+  repeated string node_ids = 3;  // Nodes to distribute shards to
+  int32 total_shards = 4;
+  ModelOptions model_options = 5;
+  string shard_group_id = 6;
+}
+
+message ShardingResponse {
+  bool success = 1;
+  string message = 2;
+  string shard_group_id = 3;
+  repeated ShardAssignment shard_assignments = 4;
+  int64 total_model_size = 5;
+}
+
+message ShardAssignment {
+  string node_id = 1;
+  int32 shard_rank = 2;
+  int32 world_size = 3;
+  repeated int32 layer_range = 4;  // [start_layer, end_layer]
+  string shard_type = 5;  // "pipeline", "tensor_parallel", "expert"
+  map<string, string> shard_metadata = 6;
+}
+
+message ShardLoadRequest {
+  string model = 1;
+  string shard_group_id = 2;
+  ShardAssignment assignment = 3;
+  ModelOptions model_options = 4;
+}
+
+message ShardLoadResponse {
+  bool success = 1;
+  string message = 2;
+  string shard_id = 3;
+  int64 shard_size_bytes = 4;
+  int32 num_layers = 5;
+}
+
+// Distributed inference
+message ShardedInferenceRequest {
+  string prompt = 1;
+  string shard_group_id = 2;
+  int32 max_tokens = 3;
+  float temperature = 4;
+  float top_p = 5;
+  float top_k = 6;
+  repeated string stop = 7;
+  string request_id = 8;
+  bool stream = 9;
+  int32 seed = 10;
+}
+
+message ShardedInferenceResponse {
+  string text = 1;
+  bool finished = 2;
+  string finish_reason = 3;
+  int32 prompt_tokens = 4;
+  int32 completion_tokens = 5;
+  string request_id = 6;
+  repeated string participating_nodes = 7;
+  int64 total_processing_time_ms = 8;
+  repeated ShardTiming shard_timings = 9;
+}
+
+message ShardedInferenceStreamResponse {
+  string text = 1;
+  bool finished = 2;
+  string finish_reason = 3;
+  string request_id = 4;
+  int32 token_count = 5;
+}
+
+message ShardTiming {
+  string node_id = 1;
+  int32 shard_rank = 2;
+  int64 processing_time_ms = 3;
+  int64 communication_time_ms = 4;
+}
+
+// Shard coordination
+message ShardForwardRequest {
+  string shard_group_id = 1;
+  string request_id = 2;
+  bytes hidden_states = 3;  // Serialized tensor data
+  TensorMetadata tensor_metadata = 4;
+  int32 source_shard = 5;
+  int32 target_shard = 6;
+  int32 sequence_length = 7;
+  bool is_prefill = 8;  // true for prefill, false for decode
+}
+
+message ShardForwardResponse {
+  bytes hidden_states = 1;  // Serialized tensor data
+  TensorMetadata tensor_metadata = 2;
+  bool success = 3;
+  string error_message = 4;
+  int64 processing_time_ms = 5;
+}
+
+message ShardGenerationRequest {
+  string shard_group_id = 1;
+  string request_id = 2;
+  bytes input_ids = 3;  // Serialized input tokens
+  bytes attention_mask = 4;
+  GenerationConfig generation_config = 5;
+  int32 current_length = 6;
+  bool is_first_token = 7;
+}
+
+message ShardGenerationResponse {
+  bytes next_token_logits = 1;  // Serialized logits
+  bytes hidden_states = 2;      // For passing to next shard
+  bool is_finished = 3;
+  string finish_reason = 4;
+  int64 processing_time_ms = 5;
+}
+
+message TensorMetadata {
+  repeated int32 shape = 1;
+  string dtype = 2;
+  string device = 3;
+  bool requires_grad = 4;
+}
+
+message GenerationConfig {
+  float temperature = 1;
+  float top_p = 2;
+  float top_k = 3;
+  int32 max_tokens = 4;
+  repeated string stop_tokens = 5;
+  int32 seed = 6;
+}
+
+// Shard group management
+message ShardGroupRegistration {
+  string shard_group_id = 1;
+  string model = 2;
+  string strategy = 3;
+  repeated ShardAssignment assignments = 4;
+  string coordinator_node = 5;
+}
+
+message ShardGroupResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message ShardGroupRequest {
+  string model = 1;
+  string shard_group_id = 2;
+}
+
+message ShardGroupListResponse {
+  repeated ShardGroupInfo groups = 1;
+}
+
+message ShardGroupInfo {
+  string shard_group_id = 1;
+  string model = 2;
+  string strategy = 3;
+  int32 total_shards = 4;
+  repeated string node_ids = 5;
+  string status = 6;  // "initializing", "ready", "error"
+  string coordinator_node = 7;
+}
+
+// Distribution
+message ShardedDistributionRequest {
+  ShardedInferenceRequest request = 1;
+  string preferred_shard_group = 2;
+  bool enable_fallback = 3;
+}
+
+message ShardedDistributionResponse {
+  ShardedInferenceResponse response = 1;
+  string serving_shard_group = 2;
+  int64 total_time_ms = 3;
+  int64 coordination_overhead_ms = 4;
+}
+
+// Status and monitoring
+message ShardStatusRequest {
+  string shard_group_id = 1;
+}
+
+message ShardStatusResponse {
+  string shard_group_id = 1;
+  string status = 2;
+  repeated ShardNodeStatus shard_statuses = 3;
+  int32 ready_shards = 4;
+  int32 total_shards = 5;
+}
+
+message ShardNodeStatus {
+  string node_id = 1;
+  int32 shard_rank = 2;
+  string status = 3;  // "loading", "ready", "error", "offline"
+  string message = 4;
+  int64 memory_usage_bytes = 5;
+}
+
+message DestroyShardRequest {
+  string shard_group_id = 1;
+}
+
+message DestroyShardResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// Health and status
 message HealthRequest {
-  // ...
+  string node_id = 1;
 }
 
 message HealthResponse {
   bool healthy = 1;
   string message = 2;
-  // ..
+  int32 load_percentage = 3;
+  int64 available_memory = 4;
+  int32 active_requests = 5;
+  repeated string loaded_shards = 6;
 }
 
+// Standard inference (keeping existing)
 message GenerateTextRequest {
   string prompt = 1;
-  // .. a lot more 
+  int32 max_tokens = 2;
+  float temperature = 3;
+  float top_p = 4;
+  float top_k = 5;
+  float frequency_penalty = 6;
+  float presence_penalty = 7;
+  repeated string stop = 8;
+  string model = 9;
+  bool stream = 10;
+  string request_id = 11;
+  int32 seed = 12;
+  bool logprobs = 13;
+  int32 top_logprobs = 14;
 }
 
 message GenerateTextResponse {
   string text = 1;
-  // .. a lot more
+  bool finished = 2;
+  string finish_reason = 3;
+  int32 prompt_tokens = 4;
+  int32 completion_tokens = 5;
+  int32 total_tokens = 6;
+  string request_id = 7;
+  repeated LogProbEntry logprobs = 8;
 }
 
 message GenerateTextStreamResponse {
   string text = 1;
-  // .. a lot more
+  bool finished = 2;
+  string finish_reason = 3;
+  string request_id = 4;
+  int32 token_count = 5;
+  repeated LogProbEntry logprobs = 6;
 }
 
+message LogProbEntry {
+  string token = 1;
+  float logprob = 2;
+  repeated TokenLogProb top_logprobs = 3;
+}
+
+message TokenLogProb {
+  string token = 1;
+  float logprob = 2;
+}
+
+// Node coordination (keeping existing)
+message NodeRegistration {
+  string node_id = 1;
+  string address = 2;
+  int32 port = 3;
+  repeated string supported_models = 4;
+  NodeCapacity capacity = 5;
+  map<string, string> metadata = 6;
+}
+
+message NodeRegistrationResponse {
+  bool success = 1;
+  string message = 2;
+  string cluster_id = 3;
+}
+
+message NodeCapacity {
+  int32 max_concurrent_requests = 1;
+  int64 total_memory_gb = 2;
+  int64 available_memory_gb = 3;
+  int32 gpu_count = 4;
+  string gpu_type = 5;
+  float cpu_utilization = 6;
+  float memory_utilization = 7;
+}
+
+message NodesRequest {
+  string model = 1;
+  int32 min_nodes = 2;
+}
+
+message NodesResponse {
+  repeated NodeInfo nodes = 1;
+  int32 total_available = 2;
+}
+
+message NodeInfo {
+  string node_id = 1;
+  string address = 2;
+  int32 port = 3;
+  NodeCapacity capacity = 4;
+  float load_score = 5;
+  string status = 6;
+}
+
+message InferenceRoutingRequest {
+  GenerateTextRequest request = 1;
+  string preferred_node = 2;
+  bool require_streaming = 3;
+}
+
+message InferenceRoutingResponse {
+  string assigned_node = 1;
+  string routing_strategy = 2;
+  int32 estimated_queue_time = 3;
+}
+
+message DistributedInferenceRequest {
+  GenerateTextRequest request = 1;
+  repeated string target_nodes = 2;
+  string distribution_strategy = 3;
+  bool enable_fallback = 4;
+}
+
+message DistributedInferenceResponse {
+  GenerateTextResponse response = 1;
+  string serving_node = 2;
+  int64 processing_time_ms = 3;
+  int64 queue_time_ms = 4;
+}
+
+message CapacityReport {
+  string node_id = 1;
+  NodeCapacity current_capacity = 2;
+  int32 active_requests = 3;
+  int32 queued_requests = 4;
+  int64 timestamp = 5;
+}
+
+message CapacityResponse {
+  bool acknowledged = 1;
+  string message = 2;
+}
+
+message ClusterStatusRequest {
+  bool include_detailed_metrics = 1;
+}
+
+message ClusterStatusResponse {
+  int32 total_nodes = 1;
+  int32 healthy_nodes = 2;
+  int32 total_requests_processed = 3;
+  float average_response_time_ms = 4;
+  repeated NodeInfo nodes = 5;
+  ClusterMetrics metrics = 6;
+}
+
+message ClusterMetrics {
+  float total_throughput_tokens_per_second = 1;
+  float average_queue_time_ms = 2;
+  int32 total_active_requests = 3;
+  map<string, int32> model_usage_count = 4;
+}
