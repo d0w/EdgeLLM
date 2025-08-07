@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -92,17 +93,11 @@ func (s *VllmServer) Start(startArgs []string) error {
 	s.cmd.Stdout = s.logger.Writer()
 	s.cmd.Stderr = s.logger.Writer()
 	s.cmd.Dir = filepath.Dir(serverDirectory)
-	s.cmd.Env = append(os.Environ(),
-		fmt.Sprintf("PYTHONPATH=%s", "."),
-		fmt.Sprintf("VLLM_SERVER_ADDR=%s", serverAddr),
-		fmt.Sprintf("VLLM_MAX_WORKERS=%d", maxWorkers),
-	)
 
 	// avoids zombie process. must manually kill the process with SIGKILL or SIGTERM
-	s.cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	s.cmd.SysProcAttr = &syscall.SysProcAttr{}
 
 	s.logger.Printf("Starting VLLM server with command: %s", s.cmd.String())
-	s.logger.Println("address", serverAddr, "workers", maxWorkers, "path", serverDirectory+"/server.py")
 
 	if err := s.cmd.Start(); err != nil {
 		s.logger.Fatalf("Failed to start VLLM server: %v", err)
@@ -159,21 +154,27 @@ func (s *VllmServer) waitForReady() error {
 }
 
 func (s *VllmServer) isReady() bool {
-	// TODO: actual health check
-
-	ready := make(chan bool, 1)
-
-	go func() {
-		time.Sleep(1 * time.Second)
-		ready <- true
-	}()
-
-	select {
-	case <-ready:
-		return true
-	case <-time.After(2 * time.Second):
+	// Actual health check via HTTP endpoint
+	healthURL := fmt.Sprintf("http://%s/health", s.serverAddress)
+	
+	client := &http.Client{
+		Timeout: 2 * time.Second,
+	}
+	
+	resp, err := client.Get(healthURL)
+	if err != nil {
+		s.logger.Printf("Health check failed: %v", err)
 		return false
 	}
+	defer resp.Body.Close()
+	
+	if resp.StatusCode == 200 {
+		s.logger.Printf("VLLM server is healthy at %s", healthURL)
+		return true
+	}
+	
+	s.logger.Printf("Health check returned status %d", resp.StatusCode)
+	return false
 }
 
 func (s *VllmServer) Stop() error {
