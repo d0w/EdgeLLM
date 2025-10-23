@@ -8,6 +8,7 @@ import (
 )
 
 var (
+	quiet             bool
 	workerModel       string
 	workerPort        string
 	workerP2PToken    string
@@ -23,7 +24,7 @@ var workerCommand = &cobra.Command{
 }
 
 func init() {
-	workerCommand.Flags().BoolVar(&vllmQuiet, "quiet", false, "Suppress output from the vLLM server")
+	workerCommand.Flags().BoolVar(&quiet, "quiet", false, "Suppress output from the vLLM server")
 	workerCommand.Flags().StringVar(&workerModel, "model", "", "Model to load (required)")
 	workerCommand.Flags().StringVar(&workerPort, "port", "50051", "gRPC port to listen on")
 	workerCommand.Flags().StringVar(&workerP2PToken, "token", "", "P2P network token")
@@ -37,7 +38,7 @@ func init() {
 }
 
 func startWorker(cmd *cobra.Command, args []string) error {
-	inferenceWorker, err := worker.CreateWorker("vllm", "test-model", 60051, 50051, "localhost:60051", "/tmp/hf_cache")
+	inferenceWorker, err := worker.CreateWorker("vllm", "test-model", 60051, 50051, "localhost", "/tmp/hf_cache")
 	if err != nil {
 		return fmt.Errorf("failed to create worker: %v", err)
 	}

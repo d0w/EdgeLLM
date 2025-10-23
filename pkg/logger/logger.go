@@ -43,4 +43,5 @@ func (l *Logger) Warn(msg string, keysAndValues ...interface{}) {
 func (l *Logger) Fatal(msg string, keysAndValues ...interface{}) {
 	log.Printf("[FATAL] %s %v", msg, keysAndValues)
 	os.Exit(1)
-} 
+}
+

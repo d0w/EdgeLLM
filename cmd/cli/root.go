@@ -1,10 +1,6 @@
 package cli
 
 import (
-	"log"
-	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -29,21 +25,21 @@ var rootCmd = &cobra.Command{
 	Long: `EdgeLLM CLI provides commands to interact with the distributed 
 LLM inference backend, including text generation, model management, 
 and health monitoring.`,
-	PersistentPreRun:  startBackend,
-	PersistentPostRun: stopBackend,
+	// PersistentPreRun:  startBackend,
+	// PersistentPostRun: stopBackend,
 }
 
 // TODO: Deprecate this
 func Execute() error {
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-c
-		if vllmServer != nil {
-			vllmServer.Stop()
-		}
-		os.Exit(0)
-	}()
+	// c := make(chan os.Signal, 1)
+	// signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	// go func() {
+	// 	<-c
+	// 	if vllmServer != nil {
+	// 		vllmServer.Stop()
+	// 	}
+	// 	os.Exit(0)
+	// }()
 	return rootCmd.Execute()
 }
 
@@ -76,25 +72,5 @@ func initConfig() {
 		if verbose {
 			cobra.CheckErr(err)
 		}
-	}
-}
-
-// TODO: Move this into separate cmd and have user start and stop server manually
-func startBackend(cmd *cobra.Command, args []string) {
-	// can set alias later, for now just VllmServer
-	vllmServer = runner.NewVllmServer("")
-
-	var startArgs []string
-
-	// TODO: Add startarg support with viper instead of manually adding in args
-
-	if err := vllmServer.Start(startArgs); err != nil {
-		log.Fatalf("Failed to start VLLM server: %v", err)
-	}
-}
-
-func stopBackend(cmd *cobra.Command, args []string) {
-	if err := vllmServer.Stop(); err != nil {
-		log.Fatalf("Failed to stop VLLM server: %v", err)
 	}
 }

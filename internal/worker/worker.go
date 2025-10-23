@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
 	"time"
 
@@ -14,9 +13,9 @@ import (
 )
 
 type Worker struct {
-	listener        *server.Server
-	inferenceServer string // needs to be an interface for different types of inference servers/runners later
-	p2pServer       string // needs to be a a p2p server listene
+	listener        *server.ListenerServer
+	inferenceServer server.InferenceServer // needs to be an interface for different types of inference servers/runners later
+	p2pServer       string                 // needs to be a a p2p server listene
 	logger          *logger.Logger
 }
 
@@ -50,28 +49,12 @@ func CreateWorker(
 	workerLogger.Info(fmt.Sprintf("Address: %s", address))
 	workerLogger.Info(fmt.Sprintf("HF Cache: %s", hfCachePath))
 
-	// Create VLLM server instance. Parameterize to anything later
-	// vllmServer := runner.NewVllmServer(runner.VllmWorker, serverAddress, hfCachePath)
-
-	// Start VLLM server
-	vllmArgs := []string{
-		"--model", inferenceModel,
-		"--port", strconv.Itoa(inferencePort),
-		"--host", "0.0.0.0",
-		"--tensor-parallel-size", "1",
-	}
-
-	// Add quiet flag if specified
-	// if viper.GetBool("quiet") {
-	// 	vllmArgs = append(vllmArgs, "--disable-log-requests")
-	// }
-
 	// create inference listerning server
-	listener := server.CreateServer(address, listenerPort)
+	listener := server.NewListenerServer(address, listenerPort, server.InferenceServerConfig{})
 
 	worker := &Worker{
 		listener:        listener,
-		inferenceServer: "some server",
+		inferenceServer: listener.InferenceServer,
 		p2pServer:       "some p2p server",
 		logger:          workerLogger,
 	}
@@ -101,6 +84,12 @@ func (w *Worker) Start() error {
 	// } else {
 	// 	workerLogger.Info("Successfully joined P2P network")
 	// }
+
+	// start listener server
+	err := w.listener.Start()
+	if err != nil {
+		return fmt.Errorf("failed to start listener server: %w", err)
+	}
 
 	// Start background health monitoring
 	go func() {
@@ -132,9 +121,9 @@ func (w *Worker) Start() error {
 
 	// Graceful shutdown
 	w.logger.Info("Stopping VLLM server...")
-	// if err := w.inferenceServer.Stop(); err != nil {
-	// 	w.logger.Error(fmt.Sprintf("Error stopping VLLM server: %v", err))
-	// }
+	if err := w.inferenceServer.Stop(); err != nil {
+		w.logger.Error(fmt.Sprintf("Error stopping VLLM server: %v", err))
+	}
 
 	w.logger.Info("Worker node stopped")
 
