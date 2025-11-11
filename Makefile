@@ -22,7 +22,7 @@ help:
 build:
 	go build -o bin/$(APP_NAME) ./cmd/server
 
-.PHONY: run
+.PHONY: run-worker
 run-worker:
 	go run ./cmd/main.go worker vllm --model=$(WORKER_MODEL)
 

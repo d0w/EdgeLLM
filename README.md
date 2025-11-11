@@ -15,16 +15,17 @@ more details to come...
 - more to come...
 
 ## Implementation
+
 *In prototype stage so subject to change*
-The goal of this is a truly decentralized p2p inference server that allows interaction with large LLM models (100B+) may not be able to be run by individuals alone. 
+The goal of this is a truly decentralized p2p inference server that allows interaction with large LLM models (100B+) may not be able to be run by individuals alone.
 
-This is a wrapper on top of runners such as vLLM and llama.cpp that support distributed inference already. The key is that these do not support true peer-to-peer networking and either relies on a head node or other centralized methods of performing the inference. 
+This is a wrapper on top of runners such as vLLM and llama.cpp that support distributed inference already. The key is that these do not support true peer-to-peer networking and either relies on a head node or other centralized methods of performing the inference.
 
-We take these runners and add bindings for them, then wrap the bindings with our p2p node implementation. Each node will have the ability to host a model or perform inference. When a user wishes to start hosting a model, they will join the network with metadata about their hosting capabilities as well as what model to host. Using `go-libp2p`, we can use its DHT functionalities to achieve this. 
+We take these runners and add bindings for them, then wrap the bindings with our p2p node implementation. Each node will have the ability to host a model or perform inference. When a user wishes to start hosting a model, they will join the network with metadata about their hosting capabilities as well as what model to host. Using `go-libp2p`, we can use its DHT functionalities to achieve this.
 
 Once users join the network, inference requests can now be handled. When a user joins the network as a "leecher", they will initiate an inference request that will create an object that handles which user requested it, the model, the prompt/response, and various metadata. Our code will then handle finding the optimal peers with a combined minimum availability (more details will need to be fleshed out for this) for that request. Once the workers are established, we then call the inference backends such as vLLM to create a one-time distributed inference network with the requester as the head and the workers from the network. The inference will be performed and then the vLLM/other backend server will be closed. There should also be the option to open a "session" and only close and open on a session.
 
-Users hosting a model will need to have the entire model installed, but there needs to be more testing as to whether the whole model needs to be loaded for use. This also depends on the inference server. 
+Users hosting a model will need to have the entire model installed, but there needs to be more testing as to whether the whole model needs to be loaded for use. This also depends on the inference server.
 
 Inference *will* be slow. But to start, we want to achieve decentralized p2p inference first. We will then evaluate how much of a bottleneck inference over network is. Details for how to balance traffic/rate-limiting have not been thought of yet and will proceed after the above is working.
 
@@ -41,6 +42,21 @@ TODO: Startup script to automate this
 - [protoc](https://protobuf.dev/installation/) and the [go extension for protoc](https://grpc.io/docs/languages/go/quickstart/)
 
 ### Local Development
+
+1. Clone and setup dependencies
+
+   ```bash
+   go mod download
+   ```
+
+2. Run worker node (only functional part currently)
+
+```bash
+make run-worker
+```
+
+**Outdated**
+<del>
 
 1. **Clone and setup dependencies:**
 
@@ -142,6 +158,8 @@ make clean         # Clean build artifacts
    ```bash
    docker-compose up -d
    ```
+
+</del>
 
 ## References
 
