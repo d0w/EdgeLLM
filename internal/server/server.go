@@ -1,9 +1,13 @@
 package server
 
-import "github.com/d0w/EdgeLLM/pkg/logger"
+import (
+	"context"
+
+	"github.com/d0w/EdgeLLM/pkg/logger"
+)
 
 type Server interface {
-	Start() error
+	Start(ctx context.Context) error
 	Stop() error
 	Ready() error
 	Health() int

@@ -2,7 +2,6 @@ package logger
 
 import (
 	"log"
-	"os"
 
 	"github.com/fatih/color"
 )
@@ -44,5 +43,5 @@ func (l *Logger) Warn(msg string, keysAndValues ...interface{}) {
 // Fatal logs a fatal message and exits
 func (l *Logger) Fatal(msg string, keysAndValues ...interface{}) {
 	log.Printf("%s %s %v", color.HiMagentaString("[FATAL]"), msg, keysAndValues)
-	os.Exit(1)
+	// os.Exit(1)
 }

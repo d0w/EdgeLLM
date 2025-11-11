@@ -43,9 +43,9 @@ func startWorker(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create worker: %v", err)
 	}
 
-	err = inferenceWorker.Start()
-	if err != nil {
+	if err := inferenceWorker.Start(); err != nil {
 		return fmt.Errorf("failed to start worker: %v", err)
 	}
+
 	return nil
 }

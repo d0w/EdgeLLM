@@ -7,13 +7,14 @@ type InferenceServer interface {
 }
 
 type InferenceServerConfig struct {
-	Runner         InferenceRunner
-	Type           InferenceServerType
-	ContainerImage string
-	ContainerName  string
-	RayStartCmd    string
-	HFCachePath    string
-	Args           []string
+	Runner          InferenceRunner
+	Type            InferenceServerType
+	ContainerImage  string
+	ContainerName   string
+	RayStartCmd     string
+	HFCachePath     string
+	Args            []string
+	HeadNodeAddress string
 	// Add other fields as needed
 }
 
@@ -35,12 +36,13 @@ func newInferenceServer(cfg InferenceServerConfig) InferenceServer {
 	switch cfg.Runner {
 	case InferenceRunnerVllm:
 		return &VllmServer{
-			Type:           cfg.Type,
-			ContainerImage: cfg.ContainerImage,
-			ContainerName:  cfg.ContainerName,
-			RayStartCmd:    cfg.RayStartCmd,
-			HFCachePath:    cfg.HFCachePath,
-			Args:           cfg.Args,
+			Type:            cfg.Type,
+			ContainerImage:  cfg.ContainerImage,
+			ContainerName:   cfg.ContainerName,
+			RayStartCmd:     cfg.RayStartCmd,
+			HFCachePath:     cfg.HFCachePath,
+			HeadNodeAddress: cfg.HeadNodeAddress,
+			Args:            cfg.Args,
 		}
 	// case ServerTypeOther:
 	//     return &OtherServer{...}

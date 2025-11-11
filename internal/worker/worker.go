@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"syscall"
+	"sync"
 	"time"
 
 	"github.com/d0w/EdgeLLM/internal/server"
@@ -14,9 +14,10 @@ import (
 
 type Worker struct {
 	listener        *server.ListenerServer
-	inferenceServer server.InferenceServer // needs to be an interface for different types of inference servers/runners later
-	p2pServer       string                 // needs to be a a p2p server listene
+	inferenceServer server.InferenceServer
+	p2pServer       string
 	logger          *logger.Logger
+	wg              sync.WaitGroup
 }
 
 func CreateWorker(
@@ -31,11 +32,8 @@ func CreateWorker(
 		return nil, fmt.Errorf("unknown worker type: %s, only 'vllm' is supported", inferenceRunner)
 	}
 
-	// Set up logger
 	workerLogger := logger.New("debug")
 
-	// Determine server address and cache path
-	// serverAddress := fmt.Sprintf("localhost:%s", listenerPort)
 	if hfCachePath == "" {
 		if path, ok := os.LookupEnv("HF_HOME"); ok {
 			hfCachePath = path
@@ -49,8 +47,15 @@ func CreateWorker(
 	workerLogger.Info(fmt.Sprintf("Address: %s", address))
 	workerLogger.Info(fmt.Sprintf("HF Cache: %s", hfCachePath))
 
-	// create inference listerning server
-	listener := server.NewListenerServer(address, listenerPort, server.InferenceServerConfig{})
+	listener := server.NewListenerServer(address, listenerPort, server.InferenceServerConfig{
+		Runner:         server.InferenceRunnerVllm,
+		Type:           server.ServerTypeHead,
+		ContainerImage: "vllm/vllm-openai:latest",
+		ContainerName:  fmt.Sprintf("edgellm-vllm-%d", listenerPort),
+		RayStartCmd:    "ray start --head --port=6379",
+		HFCachePath:    hfCachePath,
+		Args:           []string{},
+	})
 
 	worker := &Worker{
 		listener:        listener,
@@ -65,67 +70,90 @@ func CreateWorker(
 func (w *Worker) Start() error {
 	w.logger.Info("Starting listening server...")
 
-	// Set up context with cancellation
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
-	// Handle graceful shutdown
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	// if err := vllmServer.Start(vllmArgs); err != nil {
-	// 	return fmt.Errorf("failed to start VLLM server: %w", err)
-	// }
+	// Set up signal handling for graceful shutdown
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt)
 
-	// Start P2P networking
-	// workerLogger.Info("Joining P2P network...")
-	// if err := p2p.StartP2P(ctx, serverAddress, workerP2PToken, workerNetworkID); err != nil {
-	// 	workerLogger.Error(fmt.Sprintf("Failed to start P2P networking: %v", err))
-	// 	// Continue without P2P for now - the worker can still serve local requests
-	// } else {
-	// 	workerLogger.Info("Successfully joined P2P network")
-	// }
-
-	// start listener server
-	err := w.listener.Start()
-	if err != nil {
+	if err := w.listener.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start listener server: %w", err)
 	}
 
-	// Start background health monitoring
-	go func() {
-		ticker := time.NewTicker(30 * time.Second)
-		defer ticker.Stop()
+	w.wg.Add(1)
+	go w.healthMonitor(ctx)
 
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				// Check if VLLM server is still healthy
-				if ready, err := w.listener.Ready(); !ready {
-					w.logger.Warn(fmt.Sprintf("Listening server health check not ready or encountered error: %v", err))
+	w.logger.Info("Worker node is running. Press Ctrl+C to stop.")
+	w.logger.Info("Inference server will start on-demand when requests are received.")
+
+	sig := <-sigCh
+	w.logger.Info(fmt.Sprintf("Received signal %v, initiating graceful shutdown...", sig))
+
+	if cancel != nil {
+		cancel()
+	}
+	if err := w.shutdown(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (w *Worker) healthMonitor(ctx context.Context) {
+	defer w.wg.Done()
+
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	w.logger.Info("Health monitoring started")
+
+	for {
+		select {
+		case <-ctx.Done():
+			w.logger.Info("Health monitoring stopped")
+			return
+		case <-ticker.C:
+			if ready, err := w.listener.Ready(); !ready {
+				w.logger.Warn(fmt.Sprintf("Listener health check failed: %v", err))
+			}
+
+			if vllm, ok := w.inferenceServer.(*server.VllmServer); ok && vllm.IsRunning() {
+				if health := w.inferenceServer.Health(); health != 0 {
+					w.logger.Warn("Inference server is unhealthy")
+				} else {
+					w.logger.Debug("Inference server is healthy")
 				}
 			}
 		}
+	}
+}
+
+func (w *Worker) shutdown() error {
+	w.logger.Info("Initiating graceful shutdown...")
+
+	// Stop listener server (which will also stop inference server)
+	if err := w.listener.Stop(); err != nil {
+		w.logger.Error(fmt.Sprintf("Error stopping listener: %v", err))
+	}
+
+	// Wait for all goroutines to finish with timeout
+	done := make(chan struct{})
+	go func() {
+		w.wg.Wait()
+		close(done)
 	}()
 
-	w.logger.Info("Worker node is running. Press Ctrl+C to stop.")
-
-	// Wait for shutdown signal
 	select {
-	case sig := <-sigChan:
-		w.logger.Info(fmt.Sprintf("Received signal %v, shutting down...", sig))
-	case <-ctx.Done():
-		w.logger.Info("Context cancelled, shutting down...")
+	case <-done:
+		w.logger.Info("All goroutines stopped successfully")
+	case <-time.After(10 * time.Second):
+		w.logger.Warn("Timeout waiting for goroutines to stop")
 	}
 
-	// Graceful shutdown
-	w.logger.Info("Stopping VLLM server...")
-	if err := w.inferenceServer.Stop(); err != nil {
-		w.logger.Error(fmt.Sprintf("Error stopping VLLM server: %v", err))
-	}
-
-	w.logger.Info("Worker node stopped")
-
+	w.logger.Info("Worker node stopped successfully")
 	return nil
+}
+
+func (w *Worker) Stop() error {
+	return w.shutdown()
 }

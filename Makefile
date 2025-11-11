@@ -23,8 +23,8 @@ build:
 	go build -o bin/$(APP_NAME) ./cmd/server
 
 .PHONY: run
-run:
-	go run ./cmd/server
+run-worker:
+	go run ./cmd/main.go worker vllm --model=$(WORKER_MODEL)
 
 .PHONY: test
 test:

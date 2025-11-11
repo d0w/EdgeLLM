@@ -1,10 +1,6 @@
 package cli
 
 import (
-	"log"
-	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -35,17 +31,20 @@ and health monitoring.`,
 
 // TODO: Deprecate this
 func Execute() error {
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-c
-		// if vllmServer != nil {
-		// 	vllmServer.Stop()
-		// }
-		log.Print("Shutting down gracefully...")
-		os.Exit(0)
-	}()
-	return rootCmd.Execute()
+	// c := make(chan os.Signal, 1)
+	// signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	// go func() {
+	// 	<-c
+	// 	// if vllmServer != nil {
+	// 	// 	vllmServer.Stop()
+	// 	// }
+	// 	log.Print("Shutting down gracefully...")
+	// 	os.Exit(0)
+	// }()
+	if err := rootCmd.Execute(); err != nil {
+		return err
+	}
+	return nil
 }
 
 func init() {

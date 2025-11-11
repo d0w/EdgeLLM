@@ -1,8 +1,13 @@
 package server
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
+	"sync"
+	"time"
 
 	"github.com/d0w/EdgeLLM/pkg/logger"
 )
@@ -15,6 +20,9 @@ import (
 type ListenerServer struct {
 	BaseServer
 	InferenceServer InferenceServer
+
+	httpServer *http.Server
+	mu         sync.RWMutex
 }
 
 func NewListenerServer(address string, port int, inferenceServerConfig InferenceServerConfig) *ListenerServer {
@@ -26,66 +34,76 @@ func NewListenerServer(address string, port int, inferenceServerConfig Inference
 		},
 		// TODO: Parameterize inference server config
 		InferenceServer: newInferenceServer(InferenceServerConfig{
-			Type:           ServerTypeHead,
-			ContainerImage: "vllm/vllm-openai:latest",
-			ContainerName:  "edgellm-vllm",
-			RayStartCmd:    "ray start --head",
-			HFCachePath:    "/data/huggingface",
-			Args:           []string{},
+			Type:            ServerTypeWorker,
+			ContainerImage:  "vllm/vllm-openai:latest",
+			ContainerName:   "edgellm-vllm",
+			RayStartCmd:     "ray start --head",
+			HFCachePath:     "./.cache/huggingface",
+			HeadNodeAddress: "", // needs to be set dynamically
+			Args:            []string{},
 		}),
 	}
 
 	return server
 }
 
-func (s *ListenerServer) Start() error {
+func (s *ListenerServer) Start(ctx context.Context) error {
 	serverAddress := fmt.Sprintf("%s:%d", s.Address, s.Port)
 
+	// TODO: Probably use gRPC instead
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", s.healthHandler)
 	mux.HandleFunc("/ready", s.readyHandler)
+	mux.HandleFunc("/inference/start", s.startInferenceHandler)
+	mux.HandleFunc("/inference/stop", s.stopInferenceHandler)
+	mux.HandleFunc("/inference/status", s.inferenceStatusHandler)
 
 	httpServer := &http.Server{
 		Addr:    serverAddress,
 		Handler: mux,
+		BaseContext: func(listener net.Listener) context.Context {
+			return ctx
+		},
 	}
+	s.httpServer = httpServer
 
 	s.logger.Info("Starting listener server on %s", serverAddress)
 
 	// join inference network
 
-	if err := httpServer.ListenAndServe(); err != nil {
-		return fmt.Errorf("failed to start listener server: %v", err)
-	}
+	go func() {
+		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			s.logger.Error("failed to start listener server: %v", err)
+		}
+	}()
 
 	return nil
 }
 
 func (s *ListenerServer) Stop() error {
+	s.logger.Info("Stopping listener server...")
+
+	if s.InferenceServer != nil {
+		if vllm, ok := s.InferenceServer.(*VllmServer); ok && vllm.IsRunning() {
+			s.logger.Info("Stopping inference server...")
+			if err := s.InferenceServer.Stop(); err != nil {
+				s.logger.Error("Error stopping inference server: %v", err)
+			}
+		}
+	}
+	s.logger.Info("Inference server stopped.")
+
+	if s.httpServer != nil {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		if err := s.httpServer.Shutdown(shutdownCtx); err != nil {
+			s.logger.Error("Error shutting down HTTP server: %v", err)
+			return err
+		}
+	}
+
 	return nil
-}
-
-func (s *ListenerServer) healthHandler(w http.ResponseWriter, r *http.Request) {
-	health := s.Health()
-	if health != 0 {
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("NOT OK"))
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("OK"))
-}
-
-func (s *ListenerServer) readyHandler(w http.ResponseWriter, r *http.Request) {
-	_, err := s.Ready()
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("NOT READY"))
-	}
-
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("READY"))
 }
 
 // returns true if the server is ready to accept requests
@@ -98,7 +116,163 @@ func (s *ListenerServer) Health() int {
 	return 0
 }
 
-// will add this host to the temporary distributed inference network
-func joinInferenceNetwork() error {
+func (s *ListenerServer) healthHandler(w http.ResponseWriter, r *http.Request) {
+	health := s.Health()
+	if health != 0 {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":            "unhealthy",
+			"inference_running": false,
+		})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":            "healthy",
+		"inference_running": s.isInferenceServerRunning(),
+	})
+}
+
+func (s *ListenerServer) readyHandler(w http.ResponseWriter, r *http.Request) {
+	ready, err := s.Ready()
+	if err != nil || !ready {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"ready": false,
+			"error": fmt.Sprintf("%v", err),
+		})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ready": true,
+	})
+}
+
+func (s *ListenerServer) startInferenceHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Check if already running
+	if s.isInferenceServerRunning() {
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"message": "Inference server already running",
+			"status":  "running",
+		})
+		return
+	}
+
+	s.logger.Info("Received request to start inference server")
+
+	startCtx, cancel := context.WithTimeout(r.Context(), 1*time.Minute)
+	defer cancel()
+
+	errChan := make(chan error, 1)
+	go func() {
+		errChan <- s.InferenceServer.Start(s.httpServer.BaseContext(nil))
+	}()
+
+	select {
+	case err := <-errChan:
+		if err != nil {
+			s.logger.Error("Failed to start inference server: %v", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"error": fmt.Sprintf("Failed to start inference server: %v", err),
+			})
+			return
+		}
+	case <-startCtx.Done():
+		s.logger.Error("Inference server startup timed out")
+		// Attempt cleanup
+		s.InferenceServer.Stop()
+		w.WriteHeader(http.StatusGatewayTimeout)
+		json.NewEncoder(w).Encode(map[string]any{
+			"error": "Inference server startup timed out after 5 minutes",
+		})
+		return
+
+	}
+
+	s.logger.Info("Inference server started successfully")
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]any{
+		"message": "Inference server started successfully",
+		"status":  "running",
+	})
+}
+
+func (s *ListenerServer) stopInferenceHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if !s.isInferenceServerRunning() {
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"message": "Inference server not running",
+			"status":  "stopped",
+		})
+		return
+	}
+
+	s.logger.Info("Received request to stop inference server")
+
+	if err := s.InferenceServer.Stop(); err != nil {
+		s.logger.Error("Failed to stop inference server: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": fmt.Sprintf("Failed to stop inference server: %v", err),
+		})
+		return
+	}
+
+	s.logger.Info("Inference server stopped successfully")
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message": "Inference server stopped successfully",
+		"status":  "stopped",
+	})
+}
+
+func (s *ListenerServer) inferenceStatusHandler(w http.ResponseWriter, r *http.Request) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	running := s.isInferenceServerRunning()
+	health := s.InferenceServer.Health()
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"running": running,
+		"healthy": health == 0,
+	})
+}
+
+func (s *ListenerServer) isInferenceServerRunning() bool {
+	if vllm, ok := s.InferenceServer.(*VllmServer); ok {
+		return vllm.IsRunning()
+	}
+	return false
+}
+
+// joinInferenceNetwork will add this host to the temporary distributed inference network
+func (s *ListenerServer) joinInferenceNetwork() error {
+	// TODO: Implement P2P network joining logic
+	s.logger.Info("Joining inference network...")
 	return nil
 }
