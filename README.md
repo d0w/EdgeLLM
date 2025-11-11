@@ -56,6 +56,7 @@ make run-worker
 ```
 
 **Outdated**
+
 <del>
 
 1. **Clone and setup dependencies:**
