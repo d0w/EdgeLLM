@@ -2,11 +2,18 @@
 
 Run decentralized LLMs. Distribute your inference and training requests across a vast peer-to-peer network without a need for a centralized server. EdgeLLM gives users the ability to perform inference on models much larger than they could with their own machine, utilizing a network of volunteers' machines to perform inference on their behalf.
 
+## Manifesto
+OpenAI's ChatGPT, Google's Gemini, Anthropic's Claude. With their powerful models backed by their supercomputers, they're a great resource to have... until you start thinking what if one day they pull the plug? What if they begin charging insane prices? What happens to all the embarassing questions you have about your codebase (just me?). All of these LLM providers make it super easy to begin chatting with insanely complex models (even up to 1T parameters) but it comes at the cost of an increased reliance on their services and trusting them to handle your data and trust correctly. I, like many, will never put their full trust into something they do not personally own *entirely* and cannot see myself relying day-to-day on intelligent LLMs that are running on someone else's computer thousands of kilometers away with sketchy privacy policies at best. 
+
+As we spammed ChatGPT, Claude, Gemini, and more with our mindless typing, we asked a question to ourselves. Why leave some of the most powerful technologies in the 21st century to the hands of a few's large investments in thousands of GPUs when so many individuals already have their own laptop and even a GPU? An individual might not be able to run Gemini Pro themselves but borrow 100 people's GPUs for a bit and it'll be possible. We see large P2P projects like BitTorrent already do this with filesharing, so let's do it with LLMs too. We think that as the internet should truly be, LLMs should be likewise: decentralized and powered by the people.
+
 ## Goals
 
-Make the backend (model serving) interchangeable and make this project sort of a standalone that can use any inference server as long as they implement the grpc interface. We just need to focus on the inference routing, discovery, etc. and make this something you can just layer on top of an inference server to start supporting decentralized p2p inference.
-
-more details to come...
+1. Get a vLLM cluster up and running triggered by EdgeLLM requests (*we are here*)
+2. Implement P2P connections
+   - Involves adding standards for capabilities, metadata, etc. and how to propagate this around
+3. Add join/leave network capabilities
+4. More as we go along
 
 ## Features
 
