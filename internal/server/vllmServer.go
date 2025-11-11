@@ -42,13 +42,16 @@ func (v *VllmServer) Start(ctx context.Context) error {
 		"--network", "host",
 		"--name", v.ContainerName,
 		"--shm-size", "10.24g",
-		"--gpus", "all",
+		// "--gpus", "all", taking this out for now since developing without GPU
 		"-v", fmt.Sprintf("%s:/root/.cache/huggingface", v.HFCachePath),
 	}
 
 	// Add any additional arguments
 	cmdArgs = append(cmdArgs, v.Args...)
 	cmdArgs = append(cmdArgs, v.ContainerImage)
+
+	// TODO:get head node address
+	v.HeadNodeAddress = "127.0.0.1"
 
 	// TODO: Set this based on worker or head type
 	fullRayStartCmd := v.RayStartCmd + fmt.Sprintf(" --address=%s:6379", v.HeadNodeAddress)
@@ -73,16 +76,19 @@ func (v *VllmServer) Start(ctx context.Context) error {
 	v.isRunning = true
 
 	// Monitor the process in a goroutine
-	go v.monitorProcess(ctx)
+	v.monitorProcess(ctx)
 
 	// Wait for the server to be ready
 	v.mu.Unlock()
-	if err := v.waitForReady(ctx); err != nil {
-		v.Stop()
-		return fmt.Errorf("vLLM server did not become ready: %w", err)
-	}
+	// if err := v.waitForReady(ctx); err != nil {
+	// 	v.Stop()
+	// 	return fmt.Errorf("vLLM server did not become ready: %w", err)
+	// }
+
+	<-ctx.Done()
 
 	v.logger.Info("vLLM server started successfully")
+
 	return nil
 }
 

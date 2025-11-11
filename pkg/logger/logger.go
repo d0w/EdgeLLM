@@ -20,12 +20,20 @@ func New(level string) *Logger {
 
 // Info logs an info message
 func (l *Logger) Info(msg string, keysAndValues ...interface{}) {
-	log.Printf("%s %s %v", color.HiBlueString("[INFO]"), msg, keysAndValues)
+	if len(keysAndValues) == 0 {
+		log.Printf("%s %s", color.HiBlueString("[INFO]"), msg)
+	} else {
+		log.Printf("%s %s %v", color.HiBlueString("[INFO]"), msg, keysAndValues)
+	}
 }
 
 // Error logs an error message
 func (l *Logger) Error(msg string, keysAndValues ...interface{}) {
-	log.Printf("%s %s %v", color.HiRedString("[ERROR]"), msg, keysAndValues)
+	if len(keysAndValues) == 0 {
+		log.Printf("%s %s", color.HiRedString("[ERROR]"), msg)
+	} else {
+		log.Printf("%s %s %v", color.HiRedString("[ERROR]"), msg, keysAndValues)
+	}
 }
 
 // Debug logs a debug message

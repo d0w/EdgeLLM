@@ -34,13 +34,12 @@ func NewListenerServer(address string, port int, inferenceServerConfig Inference
 		},
 		// TODO: Parameterize inference server config
 		InferenceServer: newInferenceServer(InferenceServerConfig{
-			Type:            ServerTypeWorker,
-			ContainerImage:  "vllm/vllm-openai:latest",
-			ContainerName:   "edgellm-vllm",
-			RayStartCmd:     "ray start --head",
-			HFCachePath:     "./.cache/huggingface",
-			HeadNodeAddress: "", // needs to be set dynamically
-			Args:            []string{},
+			Type:           ServerTypeWorker,
+			ContainerImage: "vllm/vllm-openai:latest",
+			ContainerName:  "edgellm-vllm",
+			RayStartCmd:    "ray start --head",
+			HFCachePath:    "./.cache/huggingface",
+			Args:           []string{},
 		}),
 	}
 
@@ -58,11 +57,13 @@ func (s *ListenerServer) Start(ctx context.Context) error {
 	mux.HandleFunc("/inference/stop", s.stopInferenceHandler)
 	mux.HandleFunc("/inference/status", s.inferenceStatusHandler)
 
+	listenerCtx, listenerCancel := context.WithCancel(ctx)
+
 	httpServer := &http.Server{
 		Addr:    serverAddress,
 		Handler: mux,
 		BaseContext: func(listener net.Listener) context.Context {
-			return ctx
+			return listenerCtx
 		},
 	}
 	s.httpServer = httpServer
@@ -73,9 +74,18 @@ func (s *ListenerServer) Start(ctx context.Context) error {
 
 	go func() {
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			listenerCancel()
 			s.logger.Error("failed to start listener server: %v", err)
 		}
 	}()
+
+	select {
+	case <-ctx.Done():
+		s.Stop()
+	case <-listenerCtx.Done():
+		// do something else
+		s.Stop()
+	}
 
 	return nil
 }
@@ -91,7 +101,6 @@ func (s *ListenerServer) Stop() error {
 			}
 		}
 	}
-	s.logger.Info("Inference server stopped.")
 
 	if s.httpServer != nil {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -102,6 +111,7 @@ func (s *ListenerServer) Stop() error {
 			return err
 		}
 	}
+	s.logger.Info("Inference server stopped.")
 
 	return nil
 }
@@ -173,11 +183,13 @@ func (s *ListenerServer) startInferenceHandler(w http.ResponseWriter, r *http.Re
 	s.logger.Info("Received request to start inference server")
 
 	startCtx, cancel := context.WithTimeout(r.Context(), 1*time.Minute)
+	inferenceCtx, inferenceCancel := context.WithCancel(s.httpServer.BaseContext(nil))
 	defer cancel()
+	defer inferenceCancel()
 
 	errChan := make(chan error, 1)
 	go func() {
-		errChan <- s.InferenceServer.Start(s.httpServer.BaseContext(nil))
+		errChan <- s.InferenceServer.Start(inferenceCtx)
 	}()
 
 	select {

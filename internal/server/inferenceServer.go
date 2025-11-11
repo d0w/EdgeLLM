@@ -41,7 +41,7 @@ func newInferenceServer(cfg InferenceServerConfig) InferenceServer {
 			ContainerName:   cfg.ContainerName,
 			RayStartCmd:     cfg.RayStartCmd,
 			HFCachePath:     cfg.HFCachePath,
-			HeadNodeAddress: cfg.HeadNodeAddress,
+			HeadNodeAddress: "", // set dynamically
 			Args:            cfg.Args,
 		}
 	// case ServerTypeOther:

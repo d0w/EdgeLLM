@@ -43,9 +43,12 @@ func CreateWorker(
 	}
 
 	workerLogger.Info("Starting worker node...")
-	workerLogger.Info(fmt.Sprintf("Model: %s", inferenceModel))
-	workerLogger.Info(fmt.Sprintf("Address: %s", address))
-	workerLogger.Info(fmt.Sprintf("HF Cache: %s", hfCachePath))
+	values := map[string]any{
+		"Model":       inferenceModel,
+		"Address":     address,
+		"HFCachePath": hfCachePath,
+	}
+	workerLogger.Info("Values:", values)
 
 	listener := server.NewListenerServer(address, listenerPort, server.InferenceServerConfig{
 		Runner:         server.InferenceRunnerVllm,
@@ -76,10 +79,14 @@ func (w *Worker) Start() error {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt)
 
-	if err := w.listener.Start(ctx); err != nil {
-		return fmt.Errorf("failed to start listener server: %w", err)
-	}
-
+	go func() {
+		if err := w.listener.Start(ctx); err != nil {
+			w.logger.Error(fmt.Sprintf("Failed to start listener server: %v", err))
+			if cancel != nil {
+				cancel()
+			}
+		}
+	}()
 	w.wg.Add(1)
 	go w.healthMonitor(ctx)
 
@@ -132,9 +139,9 @@ func (w *Worker) shutdown() error {
 	w.logger.Info("Initiating graceful shutdown...")
 
 	// Stop listener server (which will also stop inference server)
-	if err := w.listener.Stop(); err != nil {
-		w.logger.Error(fmt.Sprintf("Error stopping listener: %v", err))
-	}
+	// if err := w.listener.Stop(); err != nil {
+	// 	w.logger.Error(fmt.Sprintf("Error stopping listener: %v", err))
+	// }
 
 	// Wait for all goroutines to finish with timeout
 	done := make(chan struct{})
