@@ -13,12 +13,17 @@ As we spammed ChatGPT, Claude, Gemini, and more with our mindless typing, we ask
 2. Implement P2P connections
    - Involves adding standards for capabilities, metadata, etc. and how to propagate this around
 3. Add join/leave network capabilities
-4. More as we go along
+4. KV Cache dissaggregation/share with IPFS
+5. P/D Dissaggregation
+6. Model hotswapping
+7. More as we go along
 
 ## Features
 
 - Peer-to-peer decentralized inference
 - vLLM support
+- Distributed KV Cache over P2P filesystem
+- P/D Dissaggregation
 - more to come...
 
 ## Implementation
@@ -175,6 +180,15 @@ This project takes inspiration and code snippets from several sources:
 
 - [LocalAI](https://github.com/mudler/LocalAI)
   - Main source of inspiration. This project aims to take the distributed inference capabilities of LocalAI and extend them to truly decentralized networks that work on more inference servers than just llama.cpp
+
+- [llm-d](https://github.com/llm-d)
+  - P/D Dissaggregation, KV Cache aware routing and other distributed systems techniques
+ 
+- [go-libp2p](https://github.com/libp2p/go-libp2p)
+  - P2P Capabilities
+
+- [ipfs](https://github.com/ipfs/ipfs)
+  - Distributed file systems
 
 ## Contributing
 
