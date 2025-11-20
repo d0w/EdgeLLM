@@ -168,6 +168,7 @@ func (s *ListenerServer) readyHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// TODO: This actually needs to wait for the inference server to be ready
 func (s *ListenerServer) startInferenceHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
