@@ -34,12 +34,19 @@ func NewListenerServer(address string, port int, inferenceServerConfig Inference
 		},
 		// TODO: Parameterize inference server config
 		InferenceServer: newInferenceServer(InferenceServerConfig{
-			Type:           ServerTypeWorker,
-			ContainerImage: "vllm/vllm-openai:latest",
-			ContainerName:  "edgellm-vllm",
-			RayStartCmd:    "ray start --head",
-			HFCachePath:    "./.cache/huggingface",
-			Args:           []string{},
+			Type:            ServerTypeWorker,
+			ContainerImage:  "vllm/vllm-openai:latest",
+			ContainerName:   "edgellm-vllm",
+			HFCachePath:     "./.cache/huggingface",
+			HeadNodeAddress: "10.0.0.83",
+			Model:           "Qwen/Qwen3-0.6B",
+			Args: []string{
+				"--tensor-parallel-size=1",
+				"--pipeline-parallel-size=1",
+				"--port=8010",
+				"--gpu-memory-utilization=0.3",
+				"--max-model-len=512",
+			},
 		}),
 	}
 
@@ -182,37 +189,41 @@ func (s *ListenerServer) startInferenceHandler(w http.ResponseWriter, r *http.Re
 
 	s.logger.Info("Received request to start inference server")
 
-	startCtx, cancel := context.WithTimeout(r.Context(), 1*time.Minute)
+	// startCtx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	inferenceCtx, inferenceCancel := context.WithCancel(s.httpServer.BaseContext(nil))
-	defer cancel()
+	// defer cancel()
 	defer inferenceCancel()
 
-	errChan := make(chan error, 1)
-	go func() {
-		errChan <- s.InferenceServer.Start(inferenceCtx)
-	}()
+	// errChan := make(chan error, 1)
+	// go func() {
+	// TODO: Actually wait for ready and make this synchronous
+	s.InferenceServer.Start(inferenceCtx)
+	// }()
 
-	select {
-	case err := <-errChan:
-		if err != nil {
-			s.logger.Error("Failed to start inference server: %v", err)
-			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"error": fmt.Sprintf("Failed to start inference server: %v", err),
-			})
-			return
-		}
-	case <-startCtx.Done():
-		s.logger.Error("Inference server startup timed out")
-		// Attempt cleanup
-		s.InferenceServer.Stop()
-		w.WriteHeader(http.StatusGatewayTimeout)
-		json.NewEncoder(w).Encode(map[string]any{
-			"error": "Inference server startup timed out after 5 minutes",
-		})
-		return
-
-	}
+	// select {
+	// case err := <-errChan:
+	// 	if err != nil {
+	// 		s.logger.Error("Failed to start inference server: %v", err)
+	// 		w.WriteHeader(http.StatusInternalServerError)
+	// 		json.NewEncoder(w).Encode(map[string]interface{}{
+	// 			"error": fmt.Sprintf("Failed to start inference server: %v", err),
+	// 		})
+	// 		return
+	// 	}
+	// case <-startCtx.Done():
+	// 	s.logger.Error("Inference server startup timed out")
+	// 	// Attempt cleanup
+	// 	inferenceCancel()
+	// 	go func() {
+	// 		s.InferenceServer.Stop()
+	// 	}()
+	// 	w.WriteHeader(http.StatusGatewayTimeout)
+	// 	json.NewEncoder(w).Encode(map[string]any{
+	// 		"error": "Inference server startup timed out after 5 minutes",
+	// 	})
+	// 	return
+	//
+	// }
 
 	s.logger.Info("Inference server started successfully")
 

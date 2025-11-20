@@ -11,10 +11,10 @@ type InferenceServerConfig struct {
 	Type            InferenceServerType
 	ContainerImage  string
 	ContainerName   string
-	RayStartCmd     string
 	HFCachePath     string
 	Args            []string
 	HeadNodeAddress string
+	Model           string
 	// Add other fields as needed
 }
 
@@ -39,10 +39,10 @@ func newInferenceServer(cfg InferenceServerConfig) InferenceServer {
 			Type:            cfg.Type,
 			ContainerImage:  cfg.ContainerImage,
 			ContainerName:   cfg.ContainerName,
-			RayStartCmd:     cfg.RayStartCmd,
 			HFCachePath:     cfg.HFCachePath,
-			HeadNodeAddress: "", // set dynamically
+			HeadNodeAddress: cfg.HeadNodeAddress,
 			Args:            cfg.Args,
+			Model:           cfg.Model,
 		}
 	// case ServerTypeOther:
 	//     return &OtherServer{...}

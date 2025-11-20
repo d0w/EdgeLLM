@@ -50,12 +50,12 @@ func CreateWorker(
 	}
 	workerLogger.Info("Values:", values)
 
+	// TODO: inference config values are hardcoded for now
 	listener := server.NewListenerServer(address, listenerPort, server.InferenceServerConfig{
 		Runner:         server.InferenceRunnerVllm,
 		Type:           server.ServerTypeHead,
 		ContainerImage: "vllm/vllm-openai:latest",
 		ContainerName:  fmt.Sprintf("edgellm-vllm-%d", listenerPort),
-		RayStartCmd:    "ray start --head --port=6379",
 		HFCachePath:    hfCachePath,
 		Args:           []string{},
 	})

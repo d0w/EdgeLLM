@@ -3,8 +3,10 @@ package server
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -15,7 +17,6 @@ type VllmServer struct {
 	Type            InferenceServerType
 	ContainerImage  string
 	ContainerName   string
-	RayStartCmd     string
 	HFCachePath     string
 	Args            []string
 	Model           string
@@ -26,70 +27,156 @@ type VllmServer struct {
 	isRunning bool
 }
 
+// TODO: Make this work for multi-node. Currently uses modified args to replicate multiple nodes on a single machine,.
+// Instead the docker images should just run using --host
 func (v *VllmServer) Start(ctx context.Context) error {
 	v.mu.Lock()
 
-	if v.isRunning {
-		v.logger.Info("vLLM server is already running")
-		v.mu.Unlock()
-		return nil
+	var vllmHostIP string
+	for _, arg := range v.Args {
+		if strings.HasPrefix(arg, "VLLM_HOST_IP=") {
+			vllmHostIP = strings.TrimPrefix(arg, "VLLM_HOST_IP=")
+			break
+		}
 	}
 
+	rayStartCmd := "ray start --block"
+	if v.Type == ServerTypeHead {
+		rayStartCmd += " --head --port=6379"
+	} else {
+		rayStartCmd += " --address=" + v.HeadNodeAddress + ":6379"
+	}
+
+	// Build Ray IP environment variables if VLLM_HOST_IP is set
+	rayIPVars := []string{}
+	if vllmHostIP != "" {
+		rayIPVars = append(rayIPVars,
+			"-e", fmt.Sprintf("RAY_NODE_IP_ADDRESS=%s", vllmHostIP),
+			"-e", fmt.Sprintf("RAY_OVERRIDE_NODE_IP_ADDRESS=%s", vllmHostIP),
+		)
+	}
+
+	// Add port mappings if node type is head
+	ports := []string{}
+	if v.Type == ServerTypeHead {
+		ports = append(ports, "-p", "6379:6379", "-p", "8010:8010", "-p", "6379:6379")
+	}
+
+	// Assemble Docker command arguments
+	// cmdArgs := []string{
+	// 	"run",
+	// 	"--entrypoint", "/bin/bash",
+	// 	"--network", "vllmnet",
+	// 	"--name", v.ContainerName,
+	// 	"--hostname", v.ContainerName,
+	// 	"--shm-size", "10.24g",
+	// 	"--gpus", "all",
+	// }
 	cmdArgs := []string{
 		"run",
-		"--rm", // Automatically remove container when it exits
+		"--rm",
 		"--entrypoint", "/bin/bash",
 		"--network", "host",
 		"--name", v.ContainerName,
 		"--shm-size", "10.24g",
-		// "--gpus", "all", taking this out for now since developing without GPU
-		"-v", fmt.Sprintf("%s:/root/.cache/huggingface", v.HFCachePath),
+		"--gpus", "all",
 	}
+	cmdArgs = append(cmdArgs, ports...)
+	cmdArgs = append(cmdArgs, "-v", fmt.Sprintf("%s:/root/.cache/huggingface", v.HFCachePath))
+	cmdArgs = append(cmdArgs, rayIPVars...)
+	// cmdArgs = append(cmdArgs, v.Args...)
 
-	// Add any additional arguments
-	cmdArgs = append(cmdArgs, v.Args...)
-	cmdArgs = append(cmdArgs, v.ContainerImage)
+	startCmd := fmt.Sprintf("%s & vllm serve %s %s", rayStartCmd, v.Model, strings.Join(v.Args, " "))
+	cmdArgs = append(cmdArgs, v.ContainerImage, "-c", startCmd)
 
-	// TODO:get head node address
-	v.HeadNodeAddress = "127.0.0.1"
-
-	// TODO: Set this based on worker or head type
-	fullRayStartCmd := v.RayStartCmd + fmt.Sprintf(" --address=%s:6379", v.HeadNodeAddress)
-	cmdArgs = append(cmdArgs, "-c", fullRayStartCmd)
-	// if head
-	// --head --port=6379
-
-	v.cmd = exec.CommandContext(ctx, "docker", cmdArgs...)
+	v.cmd = exec.Command("docker", cmdArgs...)
 	v.cmd.Stdout = os.Stdout
 	v.cmd.Stderr = os.Stderr
-
-	// Set process group so we can kill the entire process tree
 	v.cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
-	v.logger.Info("Starting vLLM server with command: docker %v", cmdArgs)
+	v.logger.Info(fmt.Sprintf("Starting vLLM server with command: docker %v", cmdArgs))
 
 	if err := v.cmd.Start(); err != nil {
 		v.mu.Unlock()
 		return fmt.Errorf("failed to start vLLM server: %w", err)
 	}
 
-	v.isRunning = true
+	// wait for the container to start
+	if err := pollContainerReady(ctx, v.ContainerName); err != nil {
+		v.mu.Unlock()
+		v.Stop()
+		return fmt.Errorf("vLLM container did not become ready: %w", err)
+	}
 
-	// Monitor the process in a goroutine
-	v.monitorProcess(ctx)
+	// TODO: Make model path and args dynamic
+	// serveArgs := []string{
+	// 	"vllm", "serve",
+	// 	v.Model,
+	// }
+	// serveArgs = append(serveArgs, v.Args...)
+	//
+	// if err := execInContainer(ctx, v.ContainerName, serveArgs); err != nil {
+	// 	return fmt.Errorf("failed to start vLLM serve command: %w", err)
+	// }
+
+	v.isRunning = true
 
 	// Wait for the server to be ready
 	v.mu.Unlock()
+
+	go func() {
+		err := v.cmd.Wait()
+		if err != nil {
+			v.logger.Error("vLLM server process exited unexpectedly: %v", err)
+		} else {
+			v.logger.Info("vLLM server process stopped")
+		}
+	}()
+
+	// v.monitorProcess(ctx)
 	// if err := v.waitForReady(ctx); err != nil {
 	// 	v.Stop()
 	// 	return fmt.Errorf("vLLM server did not become ready: %w", err)
 	// }
 
-	<-ctx.Done()
-
 	v.logger.Info("vLLM server started successfully")
 
+	// defer v.Stop()
+	// <-ctx.Done()
+
 	return nil
+}
+
+func pollContainerReady(ctx context.Context, containerName string) error {
+	ticker := time.NewTicker(1 * time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			slog.Error(fmt.Sprintf("Timeout waiting for container %s to be ready", containerName))
+			return fmt.Errorf("timeout waiting for container %s to be ready", containerName)
+		case <-ticker.C:
+			slog.Info(fmt.Sprintf("Checking if container %s is running...", containerName))
+			out, err := exec.CommandContext(ctx, "docker", "inspect", "-f", "{{.State.Running}}", containerName).Output()
+			if err == nil && strings.TrimSpace(string(out)) == "true" {
+				slog.Info(fmt.Sprintf("Container %s is running", containerName))
+				return nil
+			}
+		}
+	}
+}
+
+func execInContainer(ctx context.Context, containerName string, args []string) error {
+	fullArgs := append([]string{"exec", containerName}, args...)
+	cmd := exec.CommandContext(ctx, "docker", fullArgs...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	// TODO:  Using cmd.Start() instead of Run() for now
+	slog.Info(fmt.Sprintf("Executing in container %s: docker %v", containerName, fullArgs))
+	return cmd.Run()
 }
 
 func (v *VllmServer) monitorProcess(ctx context.Context) {

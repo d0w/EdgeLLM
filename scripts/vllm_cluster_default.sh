@@ -106,13 +106,6 @@ if [ -n "${VLLM_HOST_IP}" ]; then
   )
 fi
 
-PORTS=()
-if [ "${NODE_TYPE}" == "--head" ]; then
-  PORTS+=("-p 6379:6379")
-  PORTS+=("-p 8010:8010")
-  PORTS+=("-p 6379:6379")
-fi
-
 # Launch the container with the assembled parameters.
 # --network host: Allows Ray nodes to communicate directly via host networking
 # --shm-size 10.24g: Increases shared memory
@@ -120,12 +113,10 @@ fi
 # -v HF_HOME: Mounts HuggingFace cache to avoid re-downloading models
 docker run \
   --entrypoint /bin/bash \
-  --network vllmnet \
+  --network host \
   --name "${CONTAINER_NAME}" \
-  --hostname "${CONTAINER_NAME}" \
   --shm-size 10.24g \
   --gpus all \
-  "${PORTS[@]}" \
   -v "${PATH_TO_HF_HOME}:/root/.cache/huggingface" \
   "${RAY_IP_VARS[@]}" \
   "${ADDITIONAL_ARGS[@]}" \

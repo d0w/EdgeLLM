@@ -1,0 +1,1 @@
+vllm serve /root/.cache/huggingface/hub/models--Qwen--Qwen3-0.6B-Base/snapshots/da87bfb608c14b7cf20ba1ce41287e8de496c0cd/ --tensor-parallel-size 1 --pipeline-parallel-size 2 --port 8010 --gpu-memory-utilization 0.3 --max-model-len 512
