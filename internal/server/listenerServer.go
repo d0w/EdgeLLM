@@ -33,36 +33,69 @@ func NewListenerServer(address string, port int, inferenceServerConfig Inference
 			logger:  logger.New("info"),
 		},
 		// TODO: Parameterize inference server config
-		InferenceServer: newInferenceServer(InferenceServerConfig{
-			Type:            ServerTypeWorker,
-			ContainerImage:  "vllm/vllm-openai:latest",
-			ContainerName:   "edgellm-vllm",
-			HFCachePath:     "./.cache/huggingface",
-			HeadNodeAddress: "10.0.0.83",
-			Model:           "Qwen/Qwen3-0.6B",
-			Args: []string{
-				"--tensor-parallel-size=1",
-				"--pipeline-parallel-size=1",
-				"--port=8010",
-				"--gpu-memory-utilization=0.3",
-				"--max-model-len=512",
-			},
-		}),
+		// InferenceServer: newInferenceServer(InferenceServerConfig{
+		// 	Type:            ServerTypeWorker,
+		// 	ContainerImage:  "vllm/vllm-openai:latest",
+		// 	ContainerName:   "edgellm-vllm",
+		// 	HFCachePath:     "./.cache/huggingface",
+		// 	HeadNodeAddress: "10.0.0.83",
+		// 	Model:           "Qwen/Qwen3-0.6B",
+		// 	Args: []string{
+		// 		"--tensor-parallel-size=1",
+		// 		"--pipeline-parallel-size=1",
+		// 		"--port=8010",
+		// 		"--gpu-memory-utilization=0.3",
+		// 		"--max-model-len=512",
+		// 	},
+		// }),
 	}
 
 	return server
 }
 
+func (s *ListenerServer) initializeInferenceServer(serverType InferenceServerType, model string) error {
+	// TODO :Add worker set limitations
+	cfg := InferenceServerConfig{
+		Type:            serverType,
+		ContainerImage:  "vllm/vllm-openai:latest",
+		ContainerName:   "edgellm-vllm",
+		HFCachePath:     "./.cache/huggingface",
+		HeadNodeAddress: "10.0.0.83",
+		Model:           model,
+		Args: []string{
+			"--tensor-parallel-size=1",
+			"--pipeline-parallel-size=1",
+			"--port=8010",
+			"--gpu-memory-utilization=0.3",
+			"--max-model-len=512",
+		},
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.InferenceServer = newInferenceServer(cfg)
+	return nil
+}
+
+func (s *ListenerServer) removeInferenceServer() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.InferenceServer = nil
+	return nil
+}
+
 func (s *ListenerServer) Start(ctx context.Context) error {
 	serverAddress := fmt.Sprintf("%s:%d", s.Address, s.Port)
 
-	// TODO: Probably use gRPC instead
+	// TODO: Probably use gRPC or similar to work with p2p frameworkinstead
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", s.healthHandler)
 	mux.HandleFunc("/ready", s.readyHandler)
 	mux.HandleFunc("/inference/start", s.startInferenceHandler)
 	mux.HandleFunc("/inference/stop", s.stopInferenceHandler)
 	mux.HandleFunc("/inference/status", s.inferenceStatusHandler)
+	// mux.HandleFunc("/inference/initialize", s.initializeInferenceServerHandler)
+	// mux.HandleFunc("/inference/remove", s.removeInferenceServerHandler)
 
 	listenerCtx, listenerCancel := context.WithCancel(ctx)
 
@@ -133,11 +166,75 @@ func (s *ListenerServer) Health() int {
 	return 0
 }
 
+// TODO: Authenticate requester
+func (s *ListenerServer) initializeInferenceServerHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	type InitRequest struct {
+		ServerType InferenceServerType `json:"serverType"`
+		Model      string              `json:"model"`
+	}
+
+	var req InitRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if s.isInferenceServerRunning() {
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(map[string]any{
+			"error": "Inference server already running",
+		})
+		return
+	}
+
+	if err := s.initializeInferenceServer(req.ServerType, req.Model); err != nil {
+		s.logger.Error("Failed to initialize inference server: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]any{
+			"error": fmt.Sprintf("Failed to initialize inference server: %v", err),
+		})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]any{
+		"message": "Inference server initialized successfully",
+	})
+}
+
+// TODO: Authenticate requester
+func (s *ListenerServer) removeInferenceServerHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if !s.isInferenceServerRunning() {
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(map[string]any{
+			"error": "Inference server is not running",
+		})
+		return
+	}
+
+	s.removeInferenceServer()
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]any{
+		"message": "Inference server removed successfully",
+	})
+}
+
 func (s *ListenerServer) healthHandler(w http.ResponseWriter, r *http.Request) {
 	health := s.Health()
 	if health != 0 {
 		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		json.NewEncoder(w).Encode(map[string]any{
 			"status":            "unhealthy",
 			"inference_running": false,
 		})
@@ -145,7 +242,7 @@ func (s *ListenerServer) healthHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"status":            "healthy",
 		"inference_running": s.isInferenceServerRunning(),
 	})
@@ -155,7 +252,7 @@ func (s *ListenerServer) readyHandler(w http.ResponseWriter, r *http.Request) {
 	ready, err := s.Ready()
 	if err != nil || !ready {
 		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		json.NewEncoder(w).Encode(map[string]any{
 			"ready": false,
 			"error": fmt.Sprintf("%v", err),
 		})
@@ -163,15 +260,25 @@ func (s *ListenerServer) readyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"ready": true,
-	})
+	json.NewEncoder(w).Encode(map[string]any{"ready": true})
 }
 
 // TODO: This actually needs to wait for the inference server to be ready
+// TODO: Authenticate requester
 func (s *ListenerServer) startInferenceHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	type StartRequest struct {
+		ServerType InferenceServerType `json:"serverType"`
+		Model      string              `json:"model"`
+	}
+
+	var req StartRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
@@ -181,7 +288,7 @@ func (s *ListenerServer) startInferenceHandler(w http.ResponseWriter, r *http.Re
 	// Check if already running
 	if s.isInferenceServerRunning() {
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		json.NewEncoder(w).Encode(map[string]any{
 			"message": "Inference server already running",
 			"status":  "running",
 		})
@@ -189,6 +296,7 @@ func (s *ListenerServer) startInferenceHandler(w http.ResponseWriter, r *http.Re
 	}
 
 	s.logger.Info("Received request to start inference server")
+	s.initializeInferenceServer(req.ServerType, req.Model)
 
 	// startCtx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	inferenceCtx, inferenceCancel := context.WithCancel(s.httpServer.BaseContext(nil))
@@ -246,7 +354,7 @@ func (s *ListenerServer) stopInferenceHandler(w http.ResponseWriter, r *http.Req
 
 	if !s.isInferenceServerRunning() {
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		json.NewEncoder(w).Encode(map[string]any{
 			"message": "Inference server not running",
 			"status":  "stopped",
 		})
@@ -258,8 +366,17 @@ func (s *ListenerServer) stopInferenceHandler(w http.ResponseWriter, r *http.Req
 	if err := s.InferenceServer.Stop(); err != nil {
 		s.logger.Error("Failed to stop inference server: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		json.NewEncoder(w).Encode(map[string]any{
 			"error": fmt.Sprintf("Failed to stop inference server: %v", err),
+		})
+		return
+	}
+
+	if err := s.removeInferenceServer(); err != nil {
+		s.logger.Error("Failed to remove inference server: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]any{
+			"error": fmt.Sprintf("Failed to remove inference server: %v", err),
 		})
 		return
 	}
@@ -267,7 +384,7 @@ func (s *ListenerServer) stopInferenceHandler(w http.ResponseWriter, r *http.Req
 	s.logger.Info("Inference server stopped successfully")
 
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"message": "Inference server stopped successfully",
 		"status":  "stopped",
 	})
@@ -281,7 +398,7 @@ func (s *ListenerServer) inferenceStatusHandler(w http.ResponseWriter, r *http.R
 	health := s.InferenceServer.Health()
 
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"running": running,
 		"healthy": health == 0,
 	})

@@ -26,6 +26,7 @@ type (
 const (
 	ServerTypeWorker InferenceServerType = iota
 	ServerTypeHead
+	ServerTypeOther
 )
 
 const (

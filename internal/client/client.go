@@ -14,7 +14,8 @@ import (
 type Client struct {
 	ListenerEndpoint  string // endpoint for listener
 	InferenceEndpoint string // openapi compatible endpoint
-	Model             string
+	// TODO: combine endpoints into one, make array
+	Model string
 }
 
 type chatMessage struct {
@@ -46,7 +47,8 @@ func NewClient(listenerEndpoint string, model string) *Client {
 }
 
 func (c *Client) Close() error {
-	if err := StopInferenceServer(c.ListenerEndpoint); err != nil {
+	endpoints := []string{c.InferenceEndpoint}
+	if err := StopInferenceCluster(endpoints); err != nil {
 		slog.Error(fmt.Sprintf("Failed to stop inference server: %v", err))
 		return err
 	}
@@ -54,10 +56,11 @@ func (c *Client) Close() error {
 }
 
 func (c *Client) Chat() error {
-	if err := StartInferenceServer(c.ListenerEndpoint); err != nil {
+	endpoints := []string{c.InferenceEndpoint}
+	if err := StartInferenceCluster(endpoints, c.Model); err != nil {
 		return err
 	}
-	defer StopInferenceServer(c.ListenerEndpoint)
+	defer StopInferenceCluster(endpoints)
 	reader := bufio.NewReader(os.Stdin)
 	var messages []chatMessage
 
