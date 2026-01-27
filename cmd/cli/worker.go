@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 
+	"github.com/d0w/EdgeLLM/internal/p2p"
 	"github.com/d0w/EdgeLLM/internal/worker"
 	"github.com/spf13/cobra"
 )
@@ -38,9 +39,16 @@ func init() {
 }
 
 func startWorker(cmd *cobra.Command, args []string) error {
+	ctx := cmd.Context()
 	inferenceWorker, err := worker.CreateWorker("vllm", "test-model", 60051, 50051, "localhost", "/tmp/hf_cache")
 	if err != nil {
 		return fmt.Errorf("failed to create worker: %v", err)
+	}
+
+	// setup and attach node
+	node, err := p2p.NewP2PNode(ctx, []string{"test", "test2"}, 8000)
+	if err != nil {
+		return fmt.Errorf("failed to create p2p node: %v", err)
 	}
 
 	if err := inferenceWorker.Start(); err != nil {

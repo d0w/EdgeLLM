@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -14,8 +15,9 @@ import (
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
+	peerstore "github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/discovery/mdns"
-	"github.com/libp2p/go-libp2p/p2p/discovery/routing"
+	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 )
 
 var (
@@ -48,23 +50,23 @@ func NetworkId(networkId, serviceType string) string {
 
 // P2PNode represents a libp2p node with discovery capabilities
 type P2PNode struct {
-	Host         host.Host
-	DHT          *dht.IpfsDHT
-	PubSub       *pubsub.PubSub
-	Discovery    *routing.RoutingDiscovery
-	MDNSService  mdns.Service
-	ctx          context.Context
-	cancel       context.CancelFunc
-	capabilities []string
-	servicePort  int
+	Host host.Host
+	DHT  *dht.IpfsDHT
+	// PubSub       *pubsub.PubSub
+	// Discovery    *routing.RoutingDiscovery
+	// MDNSService  mdns.Service
+	// ctx          context.Context
+	// cancel       context.CancelFunc
+	// capabilities []string
+	// servicePort  int
 }
 
 // NewP2PNode creates a new P2P node with discovery capabilities
 func NewP2PNode(ctx context.Context, capabilities []string, servicePort int) (*P2PNode, error) {
 	// Create a new libp2p host
 	h, err := libp2p.New(
-		libp2p.ListenAddrStrings("/ip4/0.0.0.0/tcp/0"),
-		libp2p.Ping(false),
+	// libp2p.ListenAddrStrings("/ip4/0.0.0.0/tcp/0"),
+	// libp2p.Ping(false),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create libp2p host: %w", err)
@@ -81,32 +83,43 @@ func NewP2PNode(ctx context.Context, capabilities []string, servicePort int) (*P
 		return nil, fmt.Errorf("failed to bootstrap DHT: %w", err)
 	}
 
-	// Create pubsub
-	ps, err := pubsub.NewGossipSub(ctx, h)
+	pingService := &ping.PingService{Host: h}
+	h.SetStreamHandler(ping.ID, pingService.PingHandler)
+
+	peerInfo := peerstore.AddrInfo{
+		ID:    h.ID(),
+		Addrs: h.Addrs(),
+	}
+	addrs, err := peerstore.AddrInfoToP2pAddrs(&peerInfo)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create pubsub: %w", err)
+		return nil, fmt.Errorf("failed to set ping handler: %w", err)
 	}
 
-	// Create routing discovery
-	routingDiscovery := routing.NewRoutingDiscovery(kadDHT)
+	slog.Info("libp2p addrs", addrs)
 
-	nodeCtx, cancel := context.WithCancel(ctx)
+	// Create pubsub
+	// ps, err := pubsub.NewGossipSub(ctx, h)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("failed to create pubsub: %w", err)
+	// }
+
+	// Create routing discovery
+	// routingDiscovery := routing.NewRoutingDiscovery(kadDHT)
 
 	node := &P2PNode{
-		Host:         h,
-		DHT:          kadDHT,
-		PubSub:       ps,
-		Discovery:    routingDiscovery,
-		ctx:          nodeCtx,
-		cancel:       cancel,
-		capabilities: capabilities,
-		servicePort:  servicePort,
+		Host: h,
+		DHT:  kadDHT,
+		// PubSub:       ps,
+		// Discovery:    routingDiscovery,
+		// ctx: nodeCtx,
+		// capabilities: capabilities,
+		// servicePort:  servicePort,
 	}
 
 	// Setup MDNS discovery
-	if err := node.setupMDNS(); err != nil {
-		log.Printf("Failed to setup MDNS: %v", err)
-	}
+	// if err := node.setupMDNS(); err != nil {
+	// 	log.Printf("Failed to setup MDNS: %v", err)
+	// }
 
 	return node, nil
 }

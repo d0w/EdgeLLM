@@ -15,7 +15,6 @@ import (
 type Worker struct {
 	listener        *server.ListenerServer
 	inferenceServer server.InferenceServer
-	p2pServer       string
 	logger          *logger.Logger
 	wg              sync.WaitGroup
 }
@@ -63,7 +62,6 @@ func CreateWorker(
 	worker := &Worker{
 		listener:        listener,
 		inferenceServer: listener.InferenceServer,
-		p2pServer:       "some p2p server",
 		logger:          workerLogger,
 	}
 
