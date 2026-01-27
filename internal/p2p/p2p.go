@@ -1,5 +1,26 @@
 package p2p
 
+import (
+	"context"
+
+	"github.com/mudler/edgevpn/pkg/node"
+	"github.com/mudler/edgevpn/pkg/vpn"
+)
+
+func CreateVPN(ctx context.Context) error {
+	opts, err := vpn.Register()
+	if err != nil {
+		return err
+	}
+
+	instance, err := node.New(opts...)
+	if err != nil {
+		return err
+	}
+
+	return instance.Start(ctx)
+}
+
 //
 // import (
 // 	"context"
