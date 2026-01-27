@@ -8,7 +8,7 @@ package p2p
 // 	"os"
 // 	"strings"
 //
-// 	// "github.com/mudler/edgevpn/pkg/node"
+// 	"github.com/mudler/edgevpn/pkg/node"
 // )
 //
 // func StartP2P(ctx context.Context, address, token, networkId string) error {
