@@ -98,6 +98,29 @@ OuterLoop:
 				}
 
 			}
+		case "vpn":
+			{
+				if len(args) < 2 {
+					fmt.Println("Usage: vpn <token>")
+					continue
+				}
+
+				token := args[1]
+				fmt.Printf("Starting VPN with token: %s\n", token)
+
+				_, err := p2p.StartVPN(ctx, token, p2p.VPNOptions{
+					Address:       "10.1.0.1/24",
+					DNSAddress:    "",
+					DNSForwarder:  true,
+					DNSCacheSize:  200,
+					DNSForwardSrv: []string{"8.8.8.8:53", "1.1.1.1:53"},
+				})
+				if err != nil {
+					fmt.Printf("Failed to start VPN: %v\n", err)
+					continue
+				}
+				fmt.Println("VPN started successfully!")
+			}
 		}
 	}
 }
